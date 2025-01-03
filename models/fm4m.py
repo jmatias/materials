@@ -26,6 +26,9 @@ import torch
 from transformers import AutoTokenizer, AutoModel
 
 import sys
+
+from models.logger import create_logger
+
 sys.path.append("models/")
 
 from models.selfies_ted.load import SELFIES as bart
@@ -40,6 +43,10 @@ from rdkit.Chem import AllChem
 datasets = {}
 models = {}
 downstream_models ={}
+
+
+
+LOGGER = create_logger(__name__)
 
 
 def avail_models_data():
@@ -315,7 +322,7 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
     elif alias[model] in list(df["Name"].values):
             model_type = alias[model]
     else:
-        print("Model not available")
+        LOGGER.warning("Model not available")
         return
     
 
@@ -327,11 +334,11 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
         task = dataset
         with open(f"representation/{task}_{model_type}.pkl", "rb") as f1:
             x_batch, y_batch, x_batch_test, y_batch_test = pickle.load(f1)
-        print(f" Representation loaded successfully")
+        LOGGER.debug(f" Representation loaded successfully")
 
     elif x_train==None:
 
-        print("Custom Dataset")
+        LOGGER.info("Custom Dataset")
         #return
         components = dataset.split(",")
         train_data = pd.read_csv(components[0])[components[2]]
@@ -345,7 +352,7 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
 
 
 
-        print(f" Representation loaded successfully")
+        LOGGER.debug(f" Representation loaded successfully")
 
     else:
 
@@ -361,8 +368,8 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
         x_batch.dropna(inplace = True)
         for index in sorted(nan_indices, reverse=True):
             del y_batch[index]
-        print(f'x_batch Nan index: {nan_indices}')
-        print(f'x_batch shape: {x_batch.shape}, y_batch len: {len(y_batch)}')
+        LOGGER.debug(f'x_batch Nan index: {nan_indices}')
+        LOGGER.debug(f'x_batch shape: {x_batch.shape}, y_batch len: {len(y_batch)}')
             
     if isinstance(x_batch_test, torch.Tensor):
         x_batch_test = pd.DataFrame(x_batch_test)
@@ -371,10 +378,10 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
         x_batch_test.dropna(inplace = True)
         for index in sorted(nan_indices, reverse=True):
             del y_batch_test[index]
-        print(f'x_batch_test Nan index: {nan_indices}')
-        print(f'x_batch_test shape: {x_batch_test.shape}, y_batch_test len: {len(y_batch_test)}')
+        LOGGER.debug(f'x_batch_test Nan index: {nan_indices}')
+        LOGGER.debug(f'x_batch_test shape: {x_batch_test.shape}, y_batch_test len: {len(y_batch_test)}')
 
-    print(f" Calculating ROC AUC Score ...")
+    LOGGER.info(f" Calculating ROC AUC Score ...")
 
     if downstream_model == "XGBClassifier":
         if params == None:
@@ -387,13 +394,13 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
 
         roc_auc = roc_auc_score(y_batch_test, y_prob)
         fpr, tpr, _ = roc_curve(y_batch_test, y_prob)
-        print(f"ROC-AUC Score: {roc_auc:.4f}")
+        LOGGER.info(f"ROC-AUC Score: {roc_auc:.4f}")
 
         try:
             with open(f"plot_emb/{task}_{model_type}.pkl", "rb") as f1:
                 class_0,class_1 = pickle.load(f1)
         except:
-            print("Generating latent plots")
+            LOGGER.debug("Generating latent plots")
             reducer = umap.UMAP(metric='euclidean', n_neighbors=10, n_components=2, low_memory=True, min_dist=0.1,
                                 verbose=False)
             n_samples = np.minimum(1000, len(x_batch))
@@ -410,7 +417,7 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
             except:
                 class_0 = []
                 class_1 = []
-            print("Generating latent plots : Done")
+            LOGGER.debug("Generating latent plots : Done")
 
         #vizualize(roc_auc,fpr, tpr, x_batch, y_batch )
 
@@ -426,13 +433,13 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
 
         roc_auc = roc_auc_score(y_batch_test, y_prob)
         fpr, tpr, _ = roc_curve(y_batch_test, y_prob)
-        print(f"ROC-AUC Score: {roc_auc:.4f}")
+        LOGGER.info(f"ROC-AUC Score: {roc_auc:.4f}")
 
         try:
             with open(f"plot_emb/{task}_{model_type}.pkl", "rb") as f1:
                 class_0,class_1 = pickle.load(f1)
         except:
-            print("Generating latent plots")
+            LOGGER.info("Generating latent plots")
             reducer = umap.UMAP(metric='euclidean', n_neighbors=  10, n_components=2, low_memory=True, min_dist=0.1, verbose=False)
             n_samples = np.minimum(1000,len(x_batch))
 
@@ -452,7 +459,7 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
                 class_0 = []
                 class_1 = []
 
-            print("Generating latent plots : Done")
+            LOGGER.debug("Generating latent plots : Done")
 
         #vizualize(roc_auc,fpr, tpr, x_batch, y_batch )
 
@@ -471,11 +478,11 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
         
         y_prob = model.predict(x_batch_test)
         RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
-        
-        print(f"RMSE Score: {RMSE_score:.4f}")
+
+        LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
         result = f"RMSE Score: {RMSE_score:.4f}"
 
-        print("Generating latent plots")
+        LOGGER.info("Generating latent plots")
         reducer = umap.UMAP(metric='euclidean', n_neighbors=10, n_components=2, low_memory=True, min_dist=0.1,
                             verbose=False)
         n_samples = np.minimum(1000, len(x_batch))
@@ -492,7 +499,7 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
         except:
             class_0 = []
             class_1 = []
-        print("Generating latent plots : Done")
+        LOGGER.debug("Generating latent plots : Done")
         
         return result, RMSE_score,y_batch_test, y_prob, class_0, class_1
 
@@ -508,10 +515,10 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
         y_prob = model.predict(x_batch_test)
         RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
 
-        print(f"RMSE Score: {RMSE_score:.4f}")
+        LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
         result = f"RMSE Score: {RMSE_score:.4f}"
 
-        print("Generating latent plots")
+        LOGGER.info("Generating latent plots")
         reducer = umap.UMAP(metric='euclidean', n_neighbors=10, n_components=2, low_memory=True, min_dist=0.1,
                             verbose=False)
         n_samples = np.minimum(1000, len(x_batch))
@@ -523,7 +530,7 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
 
         class_0 = features_umap#[index_0]
         class_1 = features_umap#[index_1]
-        print("Generating latent plots : Done")
+        LOGGER.debug("Generating latent plots : Done")
 
         return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
 
@@ -540,10 +547,10 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
         y_prob = model.predict(x_batch_test)
         RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
 
-        print(f"RMSE Score: {RMSE_score:.4f}")
+        LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
         result = f"RMSE Score: {RMSE_score:.4f}"
 
-        print("Generating latent plots")
+        LOGGER.info("Generating latent plots")
         reducer = umap.UMAP(metric='euclidean', n_neighbors=10, n_components=2, low_memory=True, min_dist=0.1,
                             verbose=False)
         n_samples = np.minimum(1000, len(x_batch))
@@ -555,7 +562,7 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
 
         class_0 = features_umap#[index_0]
         class_1 = features_umap#[index_1]
-        print("Generating latent plots : Done")
+        LOGGER.debug("Generating latent plots : Done")
 
         return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
 
@@ -569,10 +576,10 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
         y_prob = model.predict(x_batch_test)
         RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
 
-        print(f"RMSE Score: {RMSE_score:.4f}")
+        LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
         result = f"RMSE Score: {RMSE_score:.4f}"
 
-        print("Generating latent plots")
+        LOGGER.info("Generating latent plots")
         reducer = umap.UMAP(metric='euclidean', n_neighbors=10, n_components=2, low_memory=True, min_dist=0.1,
                             verbose=False)
         n_samples = np.minimum(1000, len(x_batch))
@@ -584,7 +591,7 @@ def single_modal(model,dataset=None, downstream_model=None, params=None, x_train
 
         class_0 = features_umap#[index_0]
         class_1 = features_umap#[index_1]
-        print("Generating latent plots : Done")
+        LOGGER.debug("Generating latent plots : Done")
 
         return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
         
@@ -607,7 +614,7 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
         y_batch = pd.read_csv(components[0])[components[3]]
         y_batch_test = pd.read_csv(components[1])[components[3]]
 
-        print("Custom Dataset loaded")
+        LOGGER.debug("Custom Dataset loaded")
     else:
         predefined = False
         y_batch = y_train
@@ -632,7 +639,7 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
                 if predefined:
                     with open(f"representation/{task}_{model_type}.pkl", "rb") as f1:
                         x_batch, y_batch, x_batch_test, y_batch_test = pickle.load(f1)
-                    print(f" Loaded representation/{task}_{model_type}.pkl")
+                    LOGGER.debug(f" Loaded representation/{task}_{model_type}.pkl")
                 else:
                     x_batch, x_batch_test = get_representation(train_data, test_data, model_type)
                     x_batch = pd.DataFrame(x_batch)
@@ -642,7 +649,7 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
                 if predefined:
                     with open(f"representation/{task}_{model_type}.pkl", "rb") as f1:
                         x_batch_1, y_batch_1, x_batch_test_1, y_batch_test_1 = pickle.load(f1)
-                        print(f" Loaded representation/{task}_{model_type}.pkl")
+                        LOGGER.debug(f" Loaded representation/{task}_{model_type}.pkl")
                 else:
                     x_batch_1, x_batch_test_1 = get_representation(train_data, test_data, model_type)
                     x_batch_1 = pd.DataFrame(x_batch_1)
@@ -652,7 +659,7 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
                 x_batch_test = pd.concat([x_batch_test, x_batch_test_1], axis=1)
 
     else:
-        print("Model not available")
+        LOGGER.error("Model not available")
         return
 
     num_columns = x_batch_test.shape[1]
@@ -669,8 +676,8 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
         x_batch.dropna(inplace = True)
         for index in sorted(nan_indices, reverse=True):
             del y_batch[index]
-        print(f'x_batch Nan index: {nan_indices}')
-        print(f'x_batch shape: {x_batch.shape}, y_batch len: {len(y_batch)}')
+        LOGGER.debug(f'x_batch Nan index: {nan_indices}')
+        LOGGER.debug(f'x_batch shape: {x_batch.shape}, y_batch len: {len(y_batch)}')
             
     if isinstance(x_batch_test, torch.Tensor):
         x_batch_test = pd.DataFrame(x_batch_test)
@@ -679,15 +686,15 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
         x_batch_test.dropna(inplace = True)
         for index in sorted(nan_indices, reverse=True):
             del y_batch_test[index]
-        print(f'x_batch_test Nan index: {nan_indices}')
-        print(f'x_batch_test shape: {x_batch_test.shape}, y_batch_test len: {len(y_batch_test)}')
+        LOGGER.debug(f'x_batch_test Nan index: {nan_indices}')
+        LOGGER.debug(f'x_batch_test shape: {x_batch_test.shape}, y_batch_test len: {len(y_batch_test)}')
 
-    print(f"Representations loaded successfully")
+    LOGGER.debug(f"Representations loaded successfully")
     try:
         with open(f"plot_emb/{task}_multi.pkl", "rb") as f1:
             class_0, class_1 = pickle.load(f1)
     except:
-        print("Generating latent plots")
+        LOGGER.info("Generating latent plots")
         reducer = umap.UMAP(metric='euclidean', n_neighbors=10, n_components=2, low_memory=True, min_dist=0.1,
                             verbose=False)
         n_samples = np.minimum(1000, len(x_batch))
@@ -706,13 +713,13 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
             class_0 = features_umap
             class_1 = features_umap
 
-        print("Generating latent plots : Done")
+        LOGGER.debug("Generating latent plots : Done")
 
-    print(f" Calculating ROC AUC Score ...")
+    LOGGER.info(f" Calculating ROC AUC Score ...")
 
 
     if downstream_model == "XGBClassifier":
-        if params == None:
+        if params is None:
             xgb_predict_concat = XGBClassifier()
         else:            
             xgb_predict_concat = XGBClassifier(**params)#n_estimators=5000, learning_rate=0.01, max_depth=10)
@@ -723,12 +730,11 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
 
         roc_auc = roc_auc_score(y_batch_test, y_prob)
         fpr, tpr, _ = roc_curve(y_batch_test, y_prob)
-        print(f"ROC-AUC Score: {roc_auc:.4f}")
+        LOGGER.info(f"ROC-AUC Score: {roc_auc:.4f}")
 
         #vizualize(roc_auc,fpr, tpr, x_batch, y_batch )
 
         #vizualize(x_batch_test, y_batch_test)
-        print(f"ROC-AUC Score: {roc_auc:.4f}")
         result = f"ROC-AUC Score: {roc_auc:.4f}"
 
         return result, roc_auc,fpr, tpr, class_0, class_1
@@ -742,12 +748,12 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
 
         roc_auc = roc_auc_score(y_batch_test, y_prob)
         fpr, tpr, _ = roc_curve(y_batch_test, y_prob)
-        print(f"ROC-AUC Score: {roc_auc:.4f}")
+        LOGGER.info(f"ROC-AUC Score: {roc_auc:.4f}")
 
         #vizualize(roc_auc,fpr, tpr, x_batch, y_batch )
 
         #vizualize(x_batch_test, y_batch_test)
-        print(f"ROC-AUC Score: {roc_auc:.4f}")
+        LOGGER.info(f"ROC-AUC Score: {roc_auc:.4f}")
         result = f"ROC-AUC Score: {roc_auc:.4f}"
 
         return result, roc_auc,fpr, tpr, class_0, class_1
@@ -764,7 +770,7 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
         y_prob = model.predict(x_batch_test)
         RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
         
-        print(f"RMSE Score: {RMSE_score:.4f}")
+        LOGGER.info("{RMSE_score:.4f}")
         result = f"RMSE Score: {RMSE_score:.4f}"
         
         return result, RMSE_score,y_batch_test, y_prob, class_0, class_1
@@ -781,7 +787,7 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
         y_prob = model.predict(x_batch_test)
         RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
 
-        print(f"RMSE Score: {RMSE_score:.4f}")
+        LOGGER.info("{RMSE_score:.4f}")
         result = f"RMSE Score: {RMSE_score:.4f}"
 
         return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
@@ -798,7 +804,7 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
         y_prob = model.predict(x_batch_test)
         RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
 
-        print(f"RMSE Score: {RMSE_score:.4f}")
+        LOGGER.info("{RMSE_score:.4f}")
         result = f"RMSE Score: {RMSE_score:.4f}"
 
         return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
@@ -812,7 +818,7 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
         y_prob = model.predict(x_batch_test)
         RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
 
-        print(f"RMSE Score: {RMSE_score:.4f}")
+        LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
         result = f"RMSE Score: {RMSE_score:.4f}"
 
         return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
@@ -820,7 +826,7 @@ def multi_modal(model_list,dataset=None, downstream_model=None,params=None, x_tr
 
 
 def finetune_optuna(x_batch,y_batch, x_batch_test, y_test ):
-    print(f" Finetuning with Optuna and calculating ROC AUC Score ...")
+    LOGGER.info(f" Finetuning with Optuna and calculating ROC AUC Score ...")
     X_train = x_batch.values
     y_train = y_batch.values
     X_test = x_batch_test.values
@@ -854,7 +860,7 @@ def finetune_optuna(x_batch,y_batch, x_batch_test, y_test ):
 
         # Calculate ROC AUC score
         roc_auc = roc_auc_score(y_test, y_pred)
-        print("ROC_AUC : ", roc_auc)
+        LOGGER.info("ROC_AUC : ", roc_auc)
 
         return roc_auc
 
@@ -865,7 +871,7 @@ def add_new_model():
     def display_models():
         for model in models:
             model_display = f"Name: {model['Name']}, Description: {model['Description']}, Timestamp: {model['Timestamp']}"
-            print(model_display)
+            LOGGER.debug(model_display)
 
     # Function to update models
     def update_models(new_name, new_description, new_path):

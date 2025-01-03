@@ -1,3 +1,5 @@
+from models.logger import create_logger
+
 PATTERN = "(\[[^\]]+]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\(|\)|\.|=|#|-|\+|\\\\|\/|:|~|@|\?|>|\*|\$|\%[0-9]{2}|[0-9])"
 # Deep learning
 import torch
@@ -35,6 +37,8 @@ import os
 import gc
 from tqdm import tqdm
 tqdm.pandas()
+
+LOGGER = create_logger(__name__)
 
 
 # function to canonicalize SMILES
@@ -140,7 +144,7 @@ class RotateAttentionLayer(AttentionLayer):
                  d_values=d_values, event_dispatcher=event_dispatcher)
 
         self.rotaryemb = RotaryEmbedding(d_keys)
-        print('Using Rotation Embedding')
+        LOGGER.debug('Using Rotation Embedding')
 
     def forward(self, queries, keys, values, attn_mask, query_lengths,
                 key_lengths):
@@ -673,8 +677,6 @@ def load_smi_ted(folder="./smi_ted_light",
     file_path = hf_hub_download(repo_id=repo_id, filename=filename)
     model.load_checkpoint(file_path)
     model.eval()
-    print('Vocab size:', len(tokenizer.vocab))
-    print(f'[INFERENCE MODE - {str(model)}]')
+    LOGGER.info(f'Vocab size:{len(tokenizer.vocab)}')
+    LOGGER.info(f'[INFERENCE MODE - {str(model)}]')
     return model
-
-

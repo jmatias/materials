@@ -23,6 +23,12 @@ import json
 
 import os
 
+
+from models.logger import create_logger
+
+LOGGER = create_logger("app")
+LOGGER.info("Starting the application")
+
 os.environ["OMP_MAX_ACTIVE_LEVELS"] = "1"
 
 # my_theme = gr.Theme.from_hub("ysharma/steampunk")
@@ -44,7 +50,7 @@ sys.path.append("../")"""
 
 # Get the current file's directory
 base_dir = os.path.dirname(__file__)
-print("Base Dir : ", base_dir)
+LOGGER.info(f"Base Dir : {base_dir}")
 
 import models.fm4m as fm4m
 
@@ -252,7 +258,8 @@ def display_eval(selected_models, dataset, task_type, downstream, fusion_type):
         hyp_param = hyp_param.rstrip()
         hyp_param = hyp_param.replace("nan", "float('nan')")
         params = eval(hyp_param)
-    except:
+    except Exception as e:
+        LOGGER.exception(e)
         downstream_model = downstream.split("*")[0].lstrip()
         downstream_model = downstream_model.rstrip()
         params = None
@@ -324,9 +331,10 @@ def display_eval(selected_models, dataset, task_type, downstream, fusion_type):
                                                                        params=params,
                                                                        dataset=dataset)
 
-        if result == None:
+        if result is None:
             result = "Data & Model Setting is incorrect"
     except Exception as e:
+        LOGGER.exception(e)
         return f"An error occurred: {e}"
     return f"{result}"
 
@@ -377,8 +385,8 @@ def display_plot(plot_type):
 
         # change format
         try:
-            print(y_batch_test)
-            print(y_prob)
+            LOGGER.debug(y_batch_test)
+            LOGGER.debug(y_prob)
             y_batch_test = np.array(y_batch_test, dtype=float)
             y_prob = np.array(y_prob, dtype=float)
             ax.scatter(y_batch_test, y_prob, color="blue", label=f"Predicted vs Actual (RMSE: {RMSE:.4f})")
@@ -391,8 +399,8 @@ def display_plot(plot_type):
             y_batch_test = []
             y_prob = []
             RMSE = None
-            print(y_batch_test)
-            print(y_prob)
+            LOGGER.debug(y_batch_test)
+            LOGGER.debug(y_prob)
 
         ax.set_xlabel('Actual Values')
         ax.set_ylabel('Predicted Values')
