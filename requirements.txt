@@ -1,13 +1,13 @@
-matplotlib==3.9.2
+matplotlib==3.9.*
 numpy>=1.26.1, <2.0.0
 scipy>=1.12.0
-torch>=2.1.0
+torch>=2.5.0
 torchinfo>=1.8.0
 torch-geometric>=2.3.1
 pandas>=1.5.3
 pyarrow>=14.0.1
 scikit-learn>=1.5.0
-xgboost==1.6.2
+xgboost==1.6.*
 rdkit>=2024.3.5
 networkx>=2.8
 datasets>=2.13.1
@@ -16,10 +16,11 @@ selfies>=2.1.0
 transformers>=4.38
 requests>=2.32.2
 urllib3>=2.2.2
-aiohttp>=3.10.2
+aiohttp>=3.10.11
 zipp>=3.19.1
-umap-learn
+umap-learn==0.5.*
 torch-optimizer
 tqdm>=4.66.4
-mordred
-triton==2.2.0
+mordred==1.2.*
+triton==3.0.*
+gradio==5.9.*
