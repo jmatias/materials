@@ -1,4 +1,4 @@
-from .fm4m import (
+from .main import (
     multi_modal,
     single_modal,
     get_representation,

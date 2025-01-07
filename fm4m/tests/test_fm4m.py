@@ -4,8 +4,7 @@ import pandas as pd
 import pytest
 import torch
 
-import fm4m
-from fm4m import get_representation
+from fm4m.main import get_representation, multi_modal, single_modal
 from fm4m.constants import DATA_DIR, SMI_TED_MODEL
 
 
@@ -27,7 +26,7 @@ def test_multi_modal():
     x_batch = _t[0]
     x_batch_test = _t[1]
 
-    result, rmse_score, y_batch_test, y_prob, class_0, class_1 = fm4m.multi_modal(
+    result, rmse_score, y_batch_test, y_prob, class_0, class_1 = multi_modal(
         model_list=["MHG-GED", "SMI-TED"],
         x_train=train_df[INPUT],
         y_train=train_df[OUTPUT],
@@ -54,7 +53,7 @@ def test_classifier_single_modal():
 
     # Act
 
-    result, rmse_score, y_batch_test, y_prob, class_0, class_1 = fm4m.single_modal(
+    result, rmse_score, y_batch_test, y_prob, class_0, class_1 = single_modal(
         SMI_TED_MODEL,
         x_train=train_df[INPUT],
         y_train=train_df[OUTPUT],

@@ -1,30 +1,25 @@
-import gradio as gr
-from huggingface_hub import InferenceClient
-import matplotlib.pyplot as plt
-from PIL import Image
-from rdkit.Chem import Descriptors, QED, Draw
-from rdkit.Chem.Crippen import MolLogP
-import pandas as pd
-from rdkit.Contrib.SA_Score import sascorer
-from rdkit.Chem import DataStructs, AllChem
-from transformers import BartForConditionalGeneration, AutoTokenizer, AutoModel
-from transformers.modeling_outputs import BaseModelOutput
-import selfies as sf
-from rdkit import Chem
-import torch
-import numpy as np
-import umap
-import pickle
-import xgboost as xgb
-from sklearn.svm import SVR
-from sklearn.linear_model import LinearRegression
-from sklearn.kernel_ridge import KernelRidge
-import json
-
 import os
 
+import gradio as gr
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import selfies as sf
+import torch
+import xgboost as xgb
+from PIL import Image
+from rdkit import Chem
+from rdkit.Chem import DataStructs, AllChem
+from rdkit.Chem import Descriptors, QED, Draw
+from rdkit.Chem.Crippen import MolLogP
+from rdkit.Contrib.SA_Score import sascorer
+from sklearn.kernel_ridge import KernelRidge
+from sklearn.linear_model import LinearRegression
+from sklearn.svm import SVR
+from transformers import BartForConditionalGeneration, AutoTokenizer
+from transformers.modeling_outputs import BaseModelOutput
 
-from logger import create_logger
+from fm4m.logger import create_logger
 
 LOGGER = create_logger("app")
 LOGGER.info("Starting the application")
