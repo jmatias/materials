@@ -15,19 +15,26 @@ from rdkit.Chem import AllChem
 from sklearn.compose import TransformedTargetRegressor
 from sklearn.kernel_ridge import KernelRidge
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import roc_auc_score, mean_squared_error
-from sklearn.metrics import roc_curve
+from sklearn.metrics import mean_squared_error, roc_auc_score, roc_curve
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.svm import SVR
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoModel, AutoTokenizer
 from xgboost import XGBClassifier
 
 from fm4m.models.mhg_model import load as mhg
 from fm4m.models.selfies_ted.load import SELFIES as bart
 from fm4m.models.smi_ted.smi_ted_light.load import load_smi_ted
-from .constants import MODEL_ALIASES, MHG_MODEL, BART_MODEL, SMI_TED_MODEL, MOL_XL_MODEL, \
-    MORDRED_MODEL
+from .constants import (
+    BART_MODEL,
+    MHG_MODEL,
+    MODELS_PATH,
+    MODEL_ALIASES,
+    MOL_XL_MODEL,
+    MORDRED_MODEL,
+    SMI_TED_MODEL,
+)
 from .logger import create_logger
+from .path_utils import add_path
 
 MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL = "ibm/MoLFormer-XL-both-10pct"
 
@@ -411,154 +418,152 @@ def get_representation(
     Returns:
 
     """
-    if model_type in MODEL_ALIASES:
-        model_type = MODEL_ALIASES[model_type]
+    with add_path(MODELS_PATH):
+        if model_type in MODEL_ALIASES:
+            model_type = MODEL_ALIASES[model_type]
 
-    if model_type == MHG_MODEL:
-        model = mhg.load("models/mhg_model/pickles/mhggnn_pretrained_model_0724_2023.pickle")
-        with torch.no_grad():
-            train_emb = model.encode(train_data)
-            x_batch = torch.stack(train_emb)
+        if model_type == MHG_MODEL:
+            model = mhg.load("models/mhg_model/pickles/mhggnn_pretrained_model_0724_2023.pickle")
+            with torch.no_grad():
+                train_emb = model.encode(train_data)
+                x_batch = torch.stack(train_emb)
 
-            test_emb = model.encode(test_data)
-            x_batch_test = torch.stack(test_emb)
-        if not return_tensor:
+                test_emb = model.encode(test_data)
+                x_batch_test = torch.stack(test_emb)
+            if not return_tensor:
+                x_batch = pd.DataFrame(x_batch)
+                x_batch_test = pd.DataFrame(x_batch_test)
+
+        elif model_type == BART_MODEL:
+            model = bart()
+            model.load()
+            x_batch = model.encode(train_data, return_tensor=return_tensor)
+            x_batch_test = model.encode(test_data, return_tensor=return_tensor)
+
+        elif model_type == SMI_TED_MODEL:
+            model = load_smi_ted(
+                folder="models/smi_ted/smi_ted_light", ckpt_filename="smi-ted-Light_40.pt"
+            )
+            with torch.no_grad():
+                x_batch = model.encode(train_data, return_torch=return_tensor)
+                x_batch_test = model.encode(test_data, return_torch=return_tensor)
+
+        elif model_type == MOL_XL_MODEL:
+            model = AutoModel.from_pretrained(
+                MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL,
+                deterministic_eval=True,
+                trust_remote_code=True,
+            )
+            tokenizer = AutoTokenizer.from_pretrained(
+                MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL, trust_remote_code=True
+            )
+
+            if type(train_data) == list:
+                inputs = tokenizer(train_data, padding=True, return_tensors="pt")
+            else:
+                inputs = tokenizer(train_data.to_list(), padding=True, return_tensors="pt")
+
+            with torch.no_grad():
+                outputs = model(**inputs)
+
+            x_batch = outputs.pooler_output
+
+            if type(test_data) == list:
+                inputs = tokenizer(test_data, padding=True, return_tensors="pt")
+            else:
+                inputs = tokenizer(test_data.to_list(), padding=True, return_tensors="pt")
+
+            with torch.no_grad():
+                outputs = model(**inputs)
+
+            x_batch_test = outputs.pooler_output
+
+            if not return_tensor:
+                x_batch = pd.DataFrame(x_batch)
+                x_batch_test = pd.DataFrame(x_batch_test)
+
+        elif model_type == MORDRED_MODEL:
+            all_data = train_data + test_data
+            calc = Calculator(descriptors, ignore_3D=True)
+            mol_list = [Chem.MolFromSmiles(sm) for sm in all_data]
+            x_all = calc.pandas(mol_list)
+            print(f"original mordred fv dim: {x_all.shape}")
+
+            for j in x_all.columns:
+                for k in range(len(x_all[j])):
+                    i = x_all.loc[k, j]
+                    if type(i) is mordred.error.Missing or type(i) is mordred.error.Error:
+                        x_all.loc[k, j] = np.nan
+
+            x_all.dropna(how="any", axis=1, inplace=True)
+            print(f"Nan excluded mordred fv dim: {x_all.shape}")
+
+            x_batch = x_all.iloc[: len(train_data)]
+            x_batch_test = x_all.iloc[
+                len(train_data) :
+            ]  # print(f'x_batch: {len(x_batch)}, x_batch_test: {len(x_batch_test)}')
+
+        elif model_type == "MorganFingerprint":
+            params = {"radius": 2, "nBits": 1024}
+
+            mol_train = [Chem.MolFromSmiles(sm) for sm in train_data]
+            mol_test = [Chem.MolFromSmiles(sm) for sm in test_data]
+
+            x_batch = []
+            for mol in mol_train:
+                info = {}
+                fp = AllChem.GetMorganFingerprintAsBitVect(mol, **params, bitInfo=info)
+                vector = list(fp)
+                x_batch.append(vector)
             x_batch = pd.DataFrame(x_batch)
+
+            x_batch_test = []
+            for mol in mol_test:
+                info = {}
+                fp = AllChem.GetMorganFingerprintAsBitVect(mol, **params, bitInfo=info)
+                vector = list(fp)
+                x_batch_test.append(vector)
             x_batch_test = pd.DataFrame(x_batch_test)
-
-    elif model_type == BART_MODEL:
-        model = bart()
-        model.load()
-        x_batch = model.encode(train_data, return_tensor=return_tensor)
-        x_batch_test = model.encode(test_data, return_tensor=return_tensor)
-
-    elif model_type == SMI_TED_MODEL:
-        model = load_smi_ted(
-            folder="models/smi_ted/smi_ted_light", ckpt_filename="smi-ted-Light_40.pt"
-        )
-        with torch.no_grad():
-            x_batch = model.encode(train_data, return_torch=return_tensor)
-            x_batch_test = model.encode(test_data, return_torch=return_tensor)
-
-    elif model_type == MOL_XL_MODEL:
-        model = AutoModel.from_pretrained(MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL, deterministic_eval=True, trust_remote_code=True
-                                          )
-        tokenizer = AutoTokenizer.from_pretrained(MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL, trust_remote_code=True
-                                                  )
-
-        if type(train_data) == list:
-            inputs = tokenizer(train_data, padding=True, return_tensors="pt")
-        else:
-            inputs = tokenizer(train_data.to_list(), padding=True, return_tensors="pt")
-
-        with torch.no_grad():
-            outputs = model(**inputs)
-
-        x_batch = outputs.pooler_output
-
-        if type(test_data) == list:
-            inputs = tokenizer(test_data, padding=True, return_tensors="pt")
-        else:
-            inputs = tokenizer(test_data.to_list(), padding=True, return_tensors="pt")
-
-        with torch.no_grad():
-            outputs = model(**inputs)
-
-        x_batch_test = outputs.pooler_output
-
-        if not return_tensor:
-            x_batch = pd.DataFrame(x_batch)
-            x_batch_test = pd.DataFrame(x_batch_test)
-
-    elif model_type == MORDRED_MODEL:
-        all_data = train_data + test_data
-        calc = Calculator(descriptors, ignore_3D=True)
-        mol_list = [Chem.MolFromSmiles(sm) for sm in all_data]
-        x_all = calc.pandas(mol_list)
-        print(f"original mordred fv dim: {x_all.shape}")
-
-        for j in x_all.columns:
-            for k in range(len(x_all[j])):
-                i = x_all.loc[k, j]
-                if type(i) is mordred.error.Missing or type(i) is mordred.error.Error:
-                    x_all.loc[k, j] = np.nan
-
-        x_all.dropna(how="any", axis=1, inplace=True)
-        print(f"Nan excluded mordred fv dim: {x_all.shape}")
-
-        x_batch = x_all.iloc[: len(train_data)]
-        x_batch_test = x_all.iloc[
-            len(train_data) :
-        ]  # print(f'x_batch: {len(x_batch)}, x_batch_test: {len(x_batch_test)}')
-
-    elif model_type == "MorganFingerprint":
-        params = {"radius": 2, "nBits": 1024}
-
-        mol_train = [Chem.MolFromSmiles(sm) for sm in train_data]
-        mol_test = [Chem.MolFromSmiles(sm) for sm in test_data]
-
-        x_batch = []
-        for mol in mol_train:
-            info = {}
-            fp = AllChem.GetMorganFingerprintAsBitVect(mol, **params, bitInfo=info)
-            vector = list(fp)
-            x_batch.append(vector)
-        x_batch = pd.DataFrame(x_batch)
-
-        x_batch_test = []
-        for mol in mol_test:
-            info = {}
-            fp = AllChem.GetMorganFingerprintAsBitVect(mol, **params, bitInfo=info)
-            vector = list(fp)
-            x_batch_test.append(vector)
-        x_batch_test = pd.DataFrame(x_batch_test)
 
     return x_batch, x_batch_test
 
 
 # noinspection t
 def single_modal(
-    model,
+    model: str,
     dataset=None,
-    downstream_model=None,
+    downstream_model: str = None,
     params=None,
     x_train=None,
     x_test=None,
     y_train=None,
     y_test=None,
 ):
-    print(model)
-    alias = {
-        "MHG-GED": "mhg",
-        "SELFIES-TED": "bart",
-        "MolFormer": "mol-xl",
-        "Molformer": "mol-xl",
-        "SMI-TED": "smi-ted",
-    }
+    LOGGER.debug(model)
+
     data = avail_models(raw=True)
     df = pd.DataFrame(data)
     # print(list(df["Name"].values))
 
-    if model in list(df["Name"].values):
+    if model in df["Name"].to_list():
         model_type = model
-    elif alias[model] in list(df["Name"].values):
-        model_type = alias[model]
+    elif MODEL_ALIASES[model] in df["Name"].to_list():
+        model_type = MODEL_ALIASES[model]
     else:
         LOGGER.warning("Model not available")
-        return
+        return None
 
     data = avail_datasets()
     df = pd.DataFrame(data)
     # print(list(df["Dataset"].values))
 
-    if dataset in list(df["Dataset"].values):
+    if dataset in df["Dataset"].to_list():
         task = dataset
         with open(f"representation/{task}_{model_type}.pkl", "rb") as f1:
             x_batch, y_batch, x_batch_test, y_batch_test = pickle.load(f1)
         LOGGER.debug(f" Representation loaded successfully")
 
-    elif x_train == None:
-
+    elif x_train is None:
         LOGGER.info("Custom Dataset")
         # return
         components = dataset.split(",")
@@ -573,7 +578,6 @@ def single_modal(
         LOGGER.debug(f" Representation loaded successfully")
 
     else:
-
         y_batch = y_train
         y_batch_test = y_test
         x_batch, x_batch_test = get_representation(x_train, x_test, model_type)
@@ -1174,7 +1178,8 @@ def add_new_model():
         new_model = {
             "Name": new_name,
             "Description": new_description,
-            "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # "path": new_path
+            "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            # "path": new_path
         }
         models.append(new_model)
         with open("models.json", "w") as outfile:
