@@ -3,13 +3,13 @@ import json
 import os
 import pickle
 
+import mordred.error
 import numpy as np
 import pandas as pd
 import torch
 import umap
 import xgboost as xgb
-# import mordred
-# from mordred import Calculator, descriptors
+from mordred import Calculator, descriptors
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from sklearn.compose import TransformedTargetRegressor
@@ -25,7 +25,11 @@ from xgboost import XGBClassifier
 from fm4m.models.mhg_model import load as mhg
 from fm4m.models.selfies_ted.load import SELFIES as bart
 from fm4m.models.smi_ted.smi_ted_light.load import load_smi_ted
+from .constants import MODEL_ALIASES, MHG_MODEL, BART_MODEL, SMI_TED_MODEL, MOL_XL_MODEL, \
+    MORDRED_MODEL
 from .logger import create_logger
+
+MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL = "ibm/MoLFormer-XL-both-10pct"
 
 datasets = {}
 models = {}
@@ -393,18 +397,24 @@ avail_models_data()
 
 
 # noinspection t
-def get_representation(train_data, test_data, model_type, return_tensor=True):
-    alias = {
-        "MHG-GED": "mhg",
-        "SELFIES-TED": "bart",
-        "MolFormer": "mol-xl",
-        "Molformer": "mol-xl",
-        "SMI-TED": "smi-ted",
-    }
-    if model_type in alias.keys():
-        model_type = alias[model_type]
+def get_representation(
+    train_data: pd.Series, test_data: pd.Series, model_type: str, return_tensor=True
+) -> tuple[torch.Tensor, torch.Tensor] | tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Get representation of the data using the specified model
+    Args:
+        train_data:
+        test_data:
+        model_type:
+        return_tensor:
 
-    if model_type == "mhg":
+    Returns:
+
+    """
+    if model_type in MODEL_ALIASES:
+        model_type = MODEL_ALIASES[model_type]
+
+    if model_type == MHG_MODEL:
         model = mhg.load("models/mhg_model/pickles/mhggnn_pretrained_model_0724_2023.pickle")
         with torch.no_grad():
             train_emb = model.encode(train_data)
@@ -416,13 +426,13 @@ def get_representation(train_data, test_data, model_type, return_tensor=True):
             x_batch = pd.DataFrame(x_batch)
             x_batch_test = pd.DataFrame(x_batch_test)
 
-    elif model_type == "bart":
+    elif model_type == BART_MODEL:
         model = bart()
         model.load()
         x_batch = model.encode(train_data, return_tensor=return_tensor)
         x_batch_test = model.encode(test_data, return_tensor=return_tensor)
 
-    elif model_type == "smi-ted":
+    elif model_type == SMI_TED_MODEL:
         model = load_smi_ted(
             folder="models/smi_ted/smi_ted_light", ckpt_filename="smi-ted-Light_40.pt"
         )
@@ -430,18 +440,16 @@ def get_representation(train_data, test_data, model_type, return_tensor=True):
             x_batch = model.encode(train_data, return_torch=return_tensor)
             x_batch_test = model.encode(test_data, return_torch=return_tensor)
 
-    elif model_type == "mol-xl":
-        model = AutoModel.from_pretrained(
-            "ibm/MoLFormer-XL-both-10pct", deterministic_eval=True, trust_remote_code=True
-        )
-        tokenizer = AutoTokenizer.from_pretrained(
-            "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True
-        )
+    elif model_type == MOL_XL_MODEL:
+        model = AutoModel.from_pretrained(MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL, deterministic_eval=True, trust_remote_code=True
+                                          )
+        tokenizer = AutoTokenizer.from_pretrained(MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL, trust_remote_code=True
+                                                  )
 
         if type(train_data) == list:
             inputs = tokenizer(train_data, padding=True, return_tensors="pt")
         else:
-            inputs = tokenizer(list(train_data.values), padding=True, return_tensors="pt")
+            inputs = tokenizer(train_data.to_list(), padding=True, return_tensors="pt")
 
         with torch.no_grad():
             outputs = model(**inputs)
@@ -451,7 +459,7 @@ def get_representation(train_data, test_data, model_type, return_tensor=True):
         if type(test_data) == list:
             inputs = tokenizer(test_data, padding=True, return_tensors="pt")
         else:
-            inputs = tokenizer(list(test_data.values), padding=True, return_tensors="pt")
+            inputs = tokenizer(test_data.to_list(), padding=True, return_tensors="pt")
 
         with torch.no_grad():
             outputs = model(**inputs)
@@ -462,7 +470,7 @@ def get_representation(train_data, test_data, model_type, return_tensor=True):
             x_batch = pd.DataFrame(x_batch)
             x_batch_test = pd.DataFrame(x_batch_test)
 
-    elif model_type == "Mordred":
+    elif model_type == MORDRED_MODEL:
         all_data = train_data + test_data
         calc = Calculator(descriptors, ignore_3D=True)
         mol_list = [Chem.MolFromSmiles(sm) for sm in all_data]
@@ -479,8 +487,9 @@ def get_representation(train_data, test_data, model_type, return_tensor=True):
         print(f"Nan excluded mordred fv dim: {x_all.shape}")
 
         x_batch = x_all.iloc[: len(train_data)]
-        x_batch_test = x_all.iloc[len(train_data) :]
-        # print(f'x_batch: {len(x_batch)}, x_batch_test: {len(x_batch_test)}')
+        x_batch_test = x_all.iloc[
+            len(train_data) :
+        ]  # print(f'x_batch: {len(x_batch)}, x_batch_test: {len(x_batch_test)}')
 
     elif model_type == "MorganFingerprint":
         params = {"radius": 2, "nBits": 1024}
@@ -1120,8 +1129,7 @@ def finetune_optuna(x_batch, y_batch, x_batch_test, y_test):
 
     def objective(trial):
         # Define parameters to be optimized
-        params = {
-            # 'objective': 'binary:logistic',
+        params = {  # 'objective': 'binary:logistic',
             "eval_metric": "auc",
             "verbosity": 0,
             "n_estimators": trial.suggest_int("n_estimators", 1000, 10000),
@@ -1166,16 +1174,14 @@ def add_new_model():
         new_model = {
             "Name": new_name,
             "Description": new_description,
-            "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            # "path": new_path
+            "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # "path": new_path
         }
         models.append(new_model)
         with open("models.json", "w") as outfile:
             json.dump(models, outfile)
 
         print("Model uploaded and updated successfully!")
-        list_models()
-        # display_models()
+        list_models()  # display_models()
 
     # Widgets
     name_text = widgets.Text(description="Name:", layout=Layout(width="50%"))
