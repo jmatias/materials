@@ -1,0 +1,44 @@
+version: 1
+disable_existing_loggers: False
+formatters:
+  verbose:
+    format: "[%(asctime)s] %(levelname)-5s %(name)-12s %(funcName)-10s() %(message)s — (%(filename)s:%(lineno)s)"
+
+  simple:
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: DEBUG
+    formatter: verbose
+    stream: ext://sys.stderr
+
+
+#  file:
+#    class: logging.FileHandler
+#    level: INFO
+#    formatter: verbose
+#    filename: log/myapp.log
+#    mode: a
+
+
+loggers:
+  models:
+    level: DEBUG
+    handlers:
+      - console
+    propagate: no
+
+
+  app:
+    level: DEBUG
+    handlers:
+      - console
+    propagate: no
+
+  root:
+    level: WARN
+    handlers:
+        - console
