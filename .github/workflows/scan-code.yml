@@ -1,0 +1,28 @@
+#file: noinspection UndefinedAction, UndefinedParamsPresent
+name: "Scan code for secrets"
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+
+  #     ____  ___   ____   _____     ____    ____     _     _   _
+  #    / ___|/ _ \ |  _ \ | ____|   / ___|  / ___|   / \   | \ | |
+  #   | |   | | | || | | ||  _|     \___ \ | |      / _ \  |  \| |
+  #   | |___| |_| || |_| || |___     ___) || |___  / ___ \ | |\  |
+  #    \____|\___/ |____/ |_____|   |____/  \____|/_/   \_\|_| \_|
+
+  code_scan:
+    name: "Code Scan"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan code for secrets using TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
