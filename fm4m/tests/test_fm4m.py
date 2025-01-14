@@ -5,17 +5,26 @@ import pytest
 import torch
 
 from fm4m import get_vector_embeddings, multi_modal, single_modal
+from fm4m.config import datasets
 from fm4m.config.constants import DATA_DIR, SMI_TED_MODEL
 from fm4m.models.model import DownstreamModelType
 
 
+@pytest.fixture
+def bace_dataset():
+    return datasets.bace_dataset()
+
+
+@pytest.fixture
+def clintox_dataset():
+    return datasets.clintox_dataset()
+
+
 @pytest.mark.integration
 @pytest.mark.slow
-def test_multi_modal():
+def test_multi_modal(bace_dataset):
     # Arrange
-
-    train_df = pd.read_csv(join(DATA_DIR, "bace/train.csv"))
-    test_df = pd.read_csv(join(DATA_DIR, "bace/test.csv"))
+    train_df, test_df = bace_dataset
 
     # Act
     _t: tuple[torch.Tensor, torch.Tensor] = get_vector_embeddings(
@@ -43,10 +52,10 @@ def test_multi_modal():
 
 @pytest.mark.integration
 @pytest.mark.slow
-def test_classifier_single_modal():
+def test_classifier_single_modal(clintox_dataset):
     # Arrange
-    train_df = pd.read_csv(join(DATA_DIR, "clintox/clintox_train.csv"))
-    test_df = pd.read_csv(join(DATA_DIR, "clintox/clintox_test.csv"))
+
+    train_df, test_df = clintox_dataset
 
     INPUT = "smiles"
     OUTPUT = "target"
@@ -70,10 +79,10 @@ def test_classifier_single_modal():
 
 @pytest.mark.integration
 @pytest.mark.slow
-def test_regressor_single_modal():
+def test_regressor_single_modal(clintox_dataset):
     # Arrange
-    train_df = pd.read_csv(join(DATA_DIR, "clintox/clintox_train.csv"))
-    test_df = pd.read_csv(join(DATA_DIR, "clintox/clintox_test.csv"))
+
+    train_df, test_df = clintox_dataset
 
     INPUT = "smiles"
     OUTPUT = "target"

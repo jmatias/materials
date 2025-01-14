@@ -1,9 +1,8 @@
 from enum import Enum
 
-from .mhg_model.load import load as mhg
+from .mhg_model import load as mhg
 from .selfies_ted import Selfies as Bart
-from .smi_ted.smi_ted_light.load import load_smi_ted
-from ..config.model_files import MHG_MODEL_PICKLE
+from .smi_ted.smi_ted_light import load as smi_ted
 
 
 class DownstreamModelType(Enum):
@@ -15,8 +14,17 @@ class DownstreamModelType(Enum):
     DefaultRegressor = "DefaultRegressor"
 
 
+class ModelType(Enum):
+    MORDRED_MODEL = "Mordred"
+    MOL_XL_MODEL = "mol-xl"
+    BART_MODEL = "bart"
+    MHG_MODEL = "mhg"
+    SMI_TED_MODEL = "smi-ted"
+    MORGAN_FINGERPRINT = "MorganFingerprint"
+
+
 def load_smi_ted_model():
-    return load_smi_ted()
+    return smi_ted.load_smi_ted()
 
 
 def load_bart_model():
@@ -26,4 +34,4 @@ def load_bart_model():
 
 
 def load_mhg_model():
-    return mhg.load(MHG_MODEL_PICKLE)
+    return mhg.load()

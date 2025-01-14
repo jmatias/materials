@@ -16,7 +16,7 @@ authors = ["Javier Matias-Cabrera <javier@javiermatias.com>"]
 #
 
 [tool.black]
-line-length = 100
+line-length = 95
 target-version = ['py311']
 extend-exclude = '''
 # A regex preceded with ^/ will apply only to files and directories
@@ -62,16 +62,16 @@ python = "~3.11"
 aiohttp = ">=3.10.11"
 datasets = ">=2.13.1"
 evaluate = ">=0.4.0"
-gradio = "~5.9"
-matplotlib = "~3.9"
+gradio = "^5.9"
+matplotlib = "^3.9"
 mordred = "~1.2"
 networkx = ">=2.8"
 numpy = ">=1.26.1,<2.0.0"
 pandas = ">=1.5.3"
 pyarrow = ">=14.0.1"
 rdkit = "~2022.9.4"
-requests = ">=2.32.2"
-scikit-learn = "~1.5.0"
+requests = "^2.32.2"
+scikit-learn = "^1.5.0"
 scipy = ">=1.12.0"
 selfies = ">=2.1.0"
 torch = ">=2.5.0"
@@ -83,16 +83,17 @@ transformers = ">=4.38"
 triton = { path = "triton/python", develop = true }
 umap-learn = "==0.5.*"
 urllib3 = ">=2.2.2"
-xgboost = "~1.6"
+xgboost = "~1.7"
 zipp = ">=3.19.1"
 
 [tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+
+black = { extras = ["d"], version = ">=23.10.1" }
 flake8 = "^6.1.0"
-mypy = ">=1.5.1"
 flake8-functions = ">=0.0.8"
 flake8-pyproject = "^1.2.3"
-black = { extras = ["d"], version = ">=23.10.1" }
-pytest = "^8.3.4"
+mypy = ">=1.5.1"
 notebook = "^7.3.2"
 
 

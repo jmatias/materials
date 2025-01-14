@@ -1,7 +1,10 @@
 import pandas as pd
 
-splits = {'train': 'data/train-00000-of-00001-fa296d8e8d8c9c07.parquet', 'validation': 'data/validation-00000-of-00001-ca5407451a5f9454.parquet', 'test': 'data/test-00000-of-00001-6e352a5dc26e9a8a.parquet'}
-
+splits = {
+    "train": "data/train-00000-of-00001-fa296d8e8d8c9c07.parquet",
+    "validation": "data/validation-00000-of-00001-ca5407451a5f9454.parquet",
+    "test": "data/test-00000-of-00001-6e352a5dc26e9a8a.parquet",
+}
 
 df_train = pd.read_parquet("hf://datasets/zpn/clintox/" + splits["train"])
 df_test = pd.read_parquet("hf://datasets/zpn/clintox/" + splits["test"])

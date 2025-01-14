@@ -32,7 +32,7 @@ from .config.constants import (
 from .config.model_files import MHG_MODEL_PICKLE, MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL
 from .config.repository import avail_datasets, avail_models, avail_models_data
 from .logger import create_logger
-from .models.model import DownstreamModelType
+from .models.model import DownstreamModelType, ModelType
 from .models.selfies_ted import Selfies as Bart
 from .models.smi_ted.smi_ted_light.load import load_smi_ted
 from .path_utils import add_path
@@ -49,7 +49,7 @@ avail_models_data()
 def get_vector_embeddings(
     train_data: pd.Series | list,
     test_data: pd.Series | list,
-    model_type: str,
+    model_type: ModelType | str,
     return_tensor: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor] | tuple[pd.DataFrame, pd.DataFrame]:
     """
