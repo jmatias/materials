@@ -1,12 +1,9 @@
-from os.path import join
-
-import pandas as pd
 import pytest
 import torch
 
 from fm4m import get_vector_embeddings, multi_modal, single_modal
 from fm4m.config import datasets
-from fm4m.config.constants import DATA_DIR, SMI_TED_MODEL
+from fm4m.config.constants import SMI_TED_MODEL
 from fm4m.models.model import DownstreamModelType
 
 
