@@ -1,6 +1,7 @@
 import sys
 
 import fm4m
+import fm4m.datasets
 
 sys.path.append("../fm4m/models")
 sys.path.append("../")
@@ -19,10 +20,10 @@ test_df = pd.read_csv(f"../data/lce/test.csv").dropna()
 train_smiles_list = pd.concat([train_df[f"smi{i}"] for i in range(1, 7)]).unique().tolist()
 test_smiles_list = pd.concat([test_df[f"smi{i}"] for i in range(1, 7)]).unique().tolist()
 
-fm4m.avail_models()
+fm4m.datasets.avail_models()
 
 model_type = "SMI-TED"
-train_emb, test_emb = fm4m.get_representation(
+train_emb, test_emb = fm4m.get_vector_embeddings(
     train_smiles_list, test_smiles_list, model_type, return_tensor=False
 )
 

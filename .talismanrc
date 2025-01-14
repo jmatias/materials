@@ -1,3 +1,6 @@
+fileignoreconfig:
+- filename: fm4m/models/smi_ted/smi_ted_light/load.py
+  checksum: 270862f473f0ddea2f125fc9e9d72c414cbaddffb72a05ce8d56150f24d24d30
 scopeconfig:
-  - scope: python
+- scope: python
 version: "1.0"

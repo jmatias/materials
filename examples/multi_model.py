@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 import fm4m
+import fm4m.datasets
 from fm4m.constants import DATA_DIR, MODELS_PATH
 from fm4m.logger import create_logger
 from fm4m.path_utils import add_path
@@ -17,8 +18,8 @@ LOGGER = create_logger(__name__)
 # 1 Load Data
 
 
-train_df = pd.read_csv(os.path.join(DATA_DIR,"bace/train.csv"))
-test_df = pd.read_csv(os.path.join(DATA_DIR,"bace/test.csv"))
+train_df = pd.read_csv(os.path.join(DATA_DIR, "bace/train.csv"))
+test_df = pd.read_csv(os.path.join(DATA_DIR, "bace/test.csv"))
 
 LOGGER.info(f"shape of train_df: {train_df.shape}")
 
@@ -31,22 +32,22 @@ y_train = train_df[OUTPUT].to_list()
 x_test = test_df[INPUT].to_list()
 y_test = test_df[OUTPUT].to_list()
 
-fm4m.avail_models()
+fm4m.datasets.avail_models()
 
 # %%
 
 # 2-2. Encoding
 
 with add_path(MODELS_PATH):
-    x_batch, x_batch_test = fm4m.get_representation(
+    x_batch, x_batch_test = fm4m.get_vector_embeddings(
         x_train, x_test, model_type="MHG-GED", return_tensor=False
-)
+    )
 
 LOGGER.info(f"x_batch shape: {x_batch.shape}, x_batch_test shape: {x_batch_test.shape}")
 
 # 3. Model usage
 
-fm4m.avail_downstream_models()
+fm4m.datasets.avail_downstream_models()
 
 # %%
 

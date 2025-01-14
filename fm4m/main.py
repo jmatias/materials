@@ -1,6 +1,3 @@
-import datetime
-import json
-import os
 import pickle
 
 import mordred.error
@@ -21,22 +18,24 @@ from sklearn.svm import SVR
 from transformers import AutoModel, AutoTokenizer
 from xgboost import XGBClassifier
 
-from fm4m.models.mhg_model import load as mhg
-from fm4m.models.selfies_ted.load import SELFIES as bart
-from fm4m.models.smi_ted.smi_ted_light.load import load_smi_ted
-from .constants import (
+import fm4m.models.mhg_model.load as mhg
+from .config.constants import (
     BART_MODEL,
     MHG_MODEL,
     MODELS_PATH,
     MODEL_ALIASES,
     MOL_XL_MODEL,
     MORDRED_MODEL,
+    MORGAN_FINGERPRINT,
     SMI_TED_MODEL,
 )
+from .config.model_files import MHG_MODEL_PICKLE, MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL
+from .config.repository import avail_datasets, avail_models, avail_models_data
 from .logger import create_logger
+from .models.model import DownstreamModelType
+from .models.selfies_ted import Selfies as Bart
+from .models.smi_ted.smi_ted_light.load import load_smi_ted
 from .path_utils import add_path
-
-MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL = "ibm/MoLFormer-XL-both-10pct"
 
 datasets = {}
 models = {}
@@ -44,371 +43,17 @@ downstream_models = {}
 
 LOGGER = create_logger(__name__)
 
-
-def avail_models_data():
-    global datasets
-    global models
-
-    datasets = [
-        {
-            "Dataset": "hiv",
-            "Input": "smiles",
-            "Output": "HIV_active",
-            "Path": "data/hiv",
-            "Timestamp": "2024-06-26 11:27:37",
-        },
-        {
-            "Dataset": "esol",
-            "Input": "smiles",
-            "Output": "ESOL predicted log solubility in mols per litre",
-            "Path": "data/esol",
-            "Timestamp": "2024-06-26 11:31:46",
-        },
-        {
-            "Dataset": "freesolv",
-            "Input": "smiles",
-            "Output": "expt",
-            "Path": "data/freesolv",
-            "Timestamp": "2024-06-26 11:33:47",
-        },
-        {
-            "Dataset": "lipo",
-            "Input": "smiles",
-            "Output": "y",
-            "Path": "data/lipo",
-            "Timestamp": "2024-06-26 11:34:37",
-        },
-        {
-            "Dataset": "bace",
-            "Input": "smiles",
-            "Output": "Class",
-            "Path": "data/bace",
-            "Timestamp": "2024-06-26 11:36:40",
-        },
-        {
-            "Dataset": "bbbp",
-            "Input": "smiles",
-            "Output": "p_np",
-            "Path": "data/bbbp",
-            "Timestamp": "2024-06-26 11:39:23",
-        },
-        {
-            "Dataset": "clintox",
-            "Input": "smiles",
-            "Output": "CT_TOX",
-            "Path": "data/clintox",
-            "Timestamp": "2024-06-26 11:42:43",
-        },
-    ]
-
-    models = [
-        {
-            "Name": "bart",
-            "Model Name": "SELFIES-TED",
-            "Description": "BART model for string based SELFIES modality",
-            "Timestamp": "2024-06-21 12:32:20",
-        },
-        {
-            "Name": "mol-xl",
-            "Model Name": "MolFormer",
-            "Description": "MolFormer model for string based SMILES modality",
-            "Timestamp": "2024-06-21 12:35:56",
-        },
-        {
-            "Name": "mhg",
-            "Model Name": "MHG-GED",
-            "Description": "Molecular hypergraph model",
-            "Timestamp": "2024-07-10 00:09:42",
-        },
-        {
-            "Name": "smi-ted",
-            "Model Name": "SMI-TED",
-            "Description": "SMILES based encoder decoder model",
-            "Timestamp": "2024-07-10 00:09:42",
-        },
-    ]
-
-
-def avail_models(raw=False):
-    global models
-
-    models = [
-        {
-            "Name": "smi-ted",
-            "Model Name": "SMI-TED",
-            "Description": "SMILES based encoder decoder model",
-        },
-        {
-            "Name": "bart",
-            "Model Name": "SELFIES-TED",
-            "Description": "BART model for string based SELFIES modality",
-        },
-        {
-            "Name": "mol-xl",
-            "Model Name": "MolFormer",
-            "Description": "MolFormer model for string based SMILES modality",
-        },
-        {"Name": "mhg", "Model Name": "MHG-GED", "Description": "Molecular hypergraph model"},
-        {
-            "Name": "Mordred",
-            "Model Name": "Mordred",
-            "Description": "Baseline: A descriptor-calculation software application that can calculate more than 1800 two- and three-dimensional descriptors",
-        },
-        {
-            "Name": "MorganFingerprint",
-            "Model Name": "MorganFingerprint",
-            "Description": "Baseline: Circular atom environments based descriptor",
-        },
-    ]
-
-    if raw:
-        return models
-    else:
-        return pd.DataFrame(models).drop("Name", axis=1)
-
-    return models
-
-
-def avail_downstream_models(raw=False):
-    global downstream_models
-
-    downstream_models = [
-        {"Name": "XGBClassifier", "Task Type": "Classfication"},
-        {"Name": "DefaultClassifier", "Task Type": "Classfication"},
-        {"Name": "SVR", "Task Type": "Regression"},
-        {"Name": "Kernel Ridge", "Task Type": "Regression"},
-        {"Name": "Linear Regression", "Task Type": "Regression"},
-        {"Name": "DefaultRegressor", "Task Type": "Regression"},
-    ]
-
-    if raw:
-        return downstream_models
-    else:
-        return pd.DataFrame(downstream_models)
-
-
-def avail_datasets():
-    global datasets
-
-    datasets = [
-        {
-            "Dataset": "hiv",
-            "Input": "smiles",
-            "Output": "HIV_active",
-            "Path": "data/hiv",
-            "Timestamp": "2024-06-26 11:27:37",
-        },
-        {
-            "Dataset": "esol",
-            "Input": "smiles",
-            "Output": "ESOL predicted log solubility in mols per litre",
-            "Path": "data/esol",
-            "Timestamp": "2024-06-26 11:31:46",
-        },
-        {
-            "Dataset": "freesolv",
-            "Input": "smiles",
-            "Output": "expt",
-            "Path": "data/freesolv",
-            "Timestamp": "2024-06-26 11:33:47",
-        },
-        {
-            "Dataset": "lipo",
-            "Input": "smiles",
-            "Output": "y",
-            "Path": "data/lipo",
-            "Timestamp": "2024-06-26 11:34:37",
-        },
-        {
-            "Dataset": "bace",
-            "Input": "smiles",
-            "Output": "Class",
-            "Path": "data/bace",
-            "Timestamp": "2024-06-26 11:36:40",
-        },
-        {
-            "Dataset": "bbbp",
-            "Input": "smiles",
-            "Output": "p_np",
-            "Path": "data/bbbp",
-            "Timestamp": "2024-06-26 11:39:23",
-        },
-        {
-            "Dataset": "clintox",
-            "Input": "smiles",
-            "Output": "CT_TOX",
-            "Path": "data/clintox",
-            "Timestamp": "2024-06-26 11:42:43",
-        },
-    ]
-
-    return datasets
-
-
-def reset():
-    """datasets = {"esol": ["smiles", "ESOL predicted log solubility in mols per litre", "data/esol", "2024-06-26 11:36:46.509324"],
-    "freesolv": ["smiles", "expt", "data/freesolv", "2024-06-26 11:37:37.393273"],
-    "lipo": ["smiles", "y", "data/lipo", "2024-06-26 11:37:37.393273"],
-    "hiv": ["smiles", "HIV_active", "data/hiv",  "2024-06-26 11:37:37.393273"],
-    "bace": ["smiles", "Class", "data/bace", "2024-06-26 11:38:40.058354"],
-    "bbbp": ["smiles", "p_np", "data/bbbp","2024-06-26 11:38:40.058354"],
-    "clintox": ["smiles", "CT_TOX", "data/clintox","2024-06-26 11:38:40.058354"],
-    "sider": ["smiles","1:", "data/sider","2024-06-26 11:38:40.058354"],
-    "tox21": ["smiles",":-2", "data/tox21","2024-06-26 11:38:40.058354"]
-    }"""
-
-    datasets = [
-        {
-            "Dataset": "hiv",
-            "Input": "smiles",
-            "Output": "HIV_active",
-            "Path": "data/hiv",
-            "Timestamp": "2024-06-26 11:27:37",
-        },
-        {
-            "Dataset": "esol",
-            "Input": "smiles",
-            "Output": "ESOL predicted log solubility in mols per litre",
-            "Path": "data/esol",
-            "Timestamp": "2024-06-26 11:31:46",
-        },
-        {
-            "Dataset": "freesolv",
-            "Input": "smiles",
-            "Output": "expt",
-            "Path": "data/freesolv",
-            "Timestamp": "2024-06-26 11:33:47",
-        },
-        {
-            "Dataset": "lipo",
-            "Input": "smiles",
-            "Output": "y",
-            "Path": "data/lipo",
-            "Timestamp": "2024-06-26 11:34:37",
-        },
-        {
-            "Dataset": "bace",
-            "Input": "smiles",
-            "Output": "Class",
-            "Path": "data/bace",
-            "Timestamp": "2024-06-26 11:36:40",
-        },
-        {
-            "Dataset": "bbbp",
-            "Input": "smiles",
-            "Output": "p_np",
-            "Path": "data/bbbp",
-            "Timestamp": "2024-06-26 11:39:23",
-        },
-        {
-            "Dataset": "clintox",
-            "Input": "smiles",
-            "Output": "CT_TOX",
-            "Path": "data/clintox",
-            "Timestamp": "2024-06-26 11:42:43",
-        },
-        # {"Dataset": "sider", "Input": "smiles", "Output": "1:", "path": "data/sider", "Timestamp": "2024-06-26 11:38:40.058354"},
-        # {"Dataset": "tox21", "Input": "smiles", "Output": ":-2", "path": "data/tox21", "Timestamp": "2024-06-26 11:38:40.058354"}
-    ]
-
-    models = [
-        {
-            "Name": "bart",
-            "Description": "BART model for string based SELFIES modality",
-            "Timestamp": "2024-06-21 12:32:20",
-        },
-        {
-            "Name": "mol-xl",
-            "Description": "MolFormer model for string based SMILES modality",
-            "Timestamp": "2024-06-21 12:35:56",
-        },
-        {"Name": "mhg", "Description": "MHG", "Timestamp": "2024-07-10 00:09:42"},
-        {
-            "Name": "spec-gru",
-            "Description": "Spectrum modality with GRU",
-            "Timestamp": "2024-07-10 00:09:42",
-        },
-        {
-            "Name": "spec-lstm",
-            "Description": "Spectrum modality with LSTM",
-            "Timestamp": "2024-07-10 00:09:54",
-        },
-        {
-            "Name": "3d-vae",
-            "Description": "VAE model for 3D atom positions",
-            "Timestamp": "2024-07-10 00:10:08",
-        },
-    ]
-
-    downstream_models = [
-        {
-            "Name": "XGBClassifier",
-            "Description": "XG Boost Classifier",
-            "Timestamp": "2024-06-21 12:31:20",
-        },
-        {
-            "Name": "XGBRegressor",
-            "Description": "XG Boost Regressor",
-            "Timestamp": "2024-06-21 12:32:56",
-        },
-        {
-            "Name": "2-FNN",
-            "Description": "A two layer feedforward network",
-            "Timestamp": "2024-06-24 14:34:16",
-        },
-        {
-            "Name": "3-FNN",
-            "Description": "A three layer feedforward network",
-            "Timestamp": "2024-06-24 14:38:37",
-        },
-    ]
-
-    with open("datasets.json", "w") as outfile:
-        json.dump(datasets, outfile)
-
-    with open("models.json", "w") as outfile:
-        json.dump(models, outfile)
-
-    with open("downstream_models.json", "w") as outfile:
-        json.dump(downstream_models, outfile)
-
-
-def update_data_list(list_data):
-    # datasets[list_data[0]] = list_data[1:]
-
-    with open("datasets.json", "w") as outfile:
-        json.dump(datasets, outfile)
-
-    avail_models_data()
-
-
-def update_model_list(list_model):
-    # models[list_model[0]] = list_model[1]
-
-    with open("models.json", "w") as outfile:
-        json.dump(list_model, outfile)
-
-    avail_models_data()
-
-
-def update_downstream_model_list(list_model):
-    # models[list_model[0]] = list_model[1]
-
-    with open("downstream_models.json", "w") as outfile:
-        json.dump(list_model, outfile)
-
-    avail_models_data()
-
-
 avail_models_data()
 
 
-# noinspection t
-def get_representation(
-    train_data: pd.Series, test_data: pd.Series, model_type: str, return_tensor=True
+def get_vector_embeddings(
+    train_data: pd.Series | list,
+    test_data: pd.Series | list,
+    model_type: str,
+    return_tensor: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor] | tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Get representation of the data using the specified model
+    Get the embedding representation of the data using the specified model
     Args:
         train_data:
         test_data:
@@ -423,108 +68,119 @@ def get_representation(
             model_type = MODEL_ALIASES[model_type]
 
         if model_type == MHG_MODEL:
-            model = mhg.load("models/mhg_model/pickles/mhggnn_pretrained_model_0724_2023.pickle")
-            with torch.no_grad():
-                train_emb = model.encode(train_data)
-                x_batch = torch.stack(train_emb)
-
-                test_emb = model.encode(test_data)
-                x_batch_test = torch.stack(test_emb)
-            if not return_tensor:
-                x_batch = pd.DataFrame(x_batch)
-                x_batch_test = pd.DataFrame(x_batch_test)
+            x_batch, x_batch_test = load_mhg_model(test_data, train_data, return_tensor)
 
         elif model_type == BART_MODEL:
-            model = bart()
-            model.load()
-            x_batch = model.encode(train_data, return_tensor=return_tensor)
-            x_batch_test = model.encode(test_data, return_tensor=return_tensor)
+            x_batch, x_batch_test = load_bart_model(test_data, train_data, return_tensor)
 
         elif model_type == SMI_TED_MODEL:
-            model = load_smi_ted(
-                folder="models/smi_ted/smi_ted_light", ckpt_filename="smi-ted-Light_40.pt"
-            )
-            with torch.no_grad():
-                x_batch = model.encode(train_data, return_torch=return_tensor)
-                x_batch_test = model.encode(test_data, return_torch=return_tensor)
+            x_batch, x_batch_test = load_smi_ted_model(test_data, train_data, return_tensor)
 
         elif model_type == MOL_XL_MODEL:
-            model = AutoModel.from_pretrained(
-                MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL,
-                deterministic_eval=True,
-                trust_remote_code=True,
-            )
-            tokenizer = AutoTokenizer.from_pretrained(
-                MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL, trust_remote_code=True
-            )
-
-            if type(train_data) == list:
-                inputs = tokenizer(train_data, padding=True, return_tensors="pt")
-            else:
-                inputs = tokenizer(train_data.to_list(), padding=True, return_tensors="pt")
-
-            with torch.no_grad():
-                outputs = model(**inputs)
-
-            x_batch = outputs.pooler_output
-
-            if type(test_data) == list:
-                inputs = tokenizer(test_data, padding=True, return_tensors="pt")
-            else:
-                inputs = tokenizer(test_data.to_list(), padding=True, return_tensors="pt")
-
-            with torch.no_grad():
-                outputs = model(**inputs)
-
-            x_batch_test = outputs.pooler_output
-
-            if not return_tensor:
-                x_batch = pd.DataFrame(x_batch)
-                x_batch_test = pd.DataFrame(x_batch_test)
+            x_batch, x_batch_test = load_mol_xl_model(test_data, train_data, return_tensor)
 
         elif model_type == MORDRED_MODEL:
-            all_data = train_data + test_data
-            calc = Calculator(descriptors, ignore_3D=True)
-            mol_list = [Chem.MolFromSmiles(sm) for sm in all_data]
-            x_all = calc.pandas(mol_list)
-            print(f"original mordred fv dim: {x_all.shape}")
+            x_batch, x_batch_test = load_mordered_model(test_data, train_data)
 
-            for j in x_all.columns:
-                for k in range(len(x_all[j])):
-                    i = x_all.loc[k, j]
-                    if type(i) is mordred.error.Missing or type(i) is mordred.error.Error:
-                        x_all.loc[k, j] = np.nan
+        elif model_type == MORGAN_FINGERPRINT:
+            x_batch, x_batch_test = load_morgan_fingerprint_model(test_data, train_data)
 
-            x_all.dropna(how="any", axis=1, inplace=True)
-            print(f"Nan excluded mordred fv dim: {x_all.shape}")
+    return x_batch, x_batch_test
 
-            x_batch = x_all.iloc[: len(train_data)]
-            x_batch_test = x_all.iloc[
-                len(train_data) :
-            ]  # print(f'x_batch: {len(x_batch)}, x_batch_test: {len(x_batch_test)}')
 
-        elif model_type == "MorganFingerprint":
-            params = {"radius": 2, "nBits": 1024}
+def load_morgan_fingerprint_model(test_data, train_data):
+    params = {"radius": 2, "nBits": 1024}
+    mol_train = [Chem.MolFromSmiles(sm) for sm in train_data]
+    mol_test = [Chem.MolFromSmiles(sm) for sm in test_data]
+    x_batch = []
+    for mol in mol_train:
+        info = {}
+        fp = AllChem.GetMorganFingerprintAsBitVect(mol, **params, bitInfo=info)
+        vector = list(fp)
+        x_batch.append(vector)
+    x_batch = pd.DataFrame(x_batch)
+    x_batch_test = []
+    for mol in mol_test:
+        info = {}
+        fp = AllChem.GetMorganFingerprintAsBitVect(mol, **params, bitInfo=info)
+        vector = list(fp)
+        x_batch_test.append(vector)
+    x_batch_test = pd.DataFrame(x_batch_test)
+    return x_batch, x_batch_test
 
-            mol_train = [Chem.MolFromSmiles(sm) for sm in train_data]
-            mol_test = [Chem.MolFromSmiles(sm) for sm in test_data]
 
-            x_batch = []
-            for mol in mol_train:
-                info = {}
-                fp = AllChem.GetMorganFingerprintAsBitVect(mol, **params, bitInfo=info)
-                vector = list(fp)
-                x_batch.append(vector)
-            x_batch = pd.DataFrame(x_batch)
+def load_mordered_model(test_data, train_data):
+    all_data = train_data + test_data
+    calc = Calculator(descriptors, ignore_3D=True)
+    mol_list = [Chem.MolFromSmiles(sm) for sm in all_data]
+    x_all = calc.pandas(mol_list)
+    print(f"original mordred fv dim: {x_all.shape}")
+    for j in x_all.columns:
+        for k in range(len(x_all[j])):
+            i = x_all.loc[k, j]
+            if type(i) is mordred.error.Missing or type(i) is mordred.error.Error:
+                x_all.loc[k, j] = np.nan
+    x_all.dropna(how="any", axis=1, inplace=True)
+    print(f"Nan excluded mordred fv dim: {x_all.shape}")
+    x_batch = x_all.iloc[: len(train_data)]
+    x_batch_test = x_all.iloc[
+        len(train_data) :
+    ]  # print(f'x_batch: {len(x_batch)}, x_batch_test: {len(x_batch_test)}')
+    return x_batch, x_batch_test
 
-            x_batch_test = []
-            for mol in mol_test:
-                info = {}
-                fp = AllChem.GetMorganFingerprintAsBitVect(mol, **params, bitInfo=info)
-                vector = list(fp)
-                x_batch_test.append(vector)
-            x_batch_test = pd.DataFrame(x_batch_test)
 
+def load_mol_xl_model(test_data, train_data, return_tensor):
+    model = AutoModel.from_pretrained(
+        MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL,
+        deterministic_eval=True,
+        trust_remote_code=True,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        MOL_FORMER_XL_BOTH_10PCT_PRETRAINED_MODEL, trust_remote_code=True
+    )
+    train_data = train_data.to_list() if isinstance(train_data, pd.Series) else train_data
+    test_data = test_data.to_list() if isinstance(test_data, pd.Series) else test_data
+    inputs = tokenizer(train_data.to_list(), padding=True, return_tensors="pt")
+    with torch.no_grad():
+        outputs = model(**inputs)
+    x_batch = outputs.pooler_output
+    inputs = tokenizer(test_data.to_list(), padding=True, return_tensors="pt")
+    with torch.no_grad():
+        outputs = model(**inputs)
+    x_batch_test = outputs.pooler_output
+    if not return_tensor:
+        x_batch = pd.DataFrame(x_batch)
+        x_batch_test = pd.DataFrame(x_batch_test)
+    return x_batch, x_batch_test
+
+
+def load_smi_ted_model(test_data, train_data, return_tensor):
+    model = load_smi_ted()
+    with torch.no_grad():
+        x_batch = model.encode(train_data, return_torch=return_tensor)
+        x_batch_test = model.encode(test_data, return_torch=return_tensor)
+    return x_batch, x_batch_test
+
+
+def load_bart_model(test_data, train_data, return_tensor):
+    model = Bart()
+    model.load()
+    x_batch = model.encode(train_data, return_tensor=return_tensor)
+    x_batch_test = model.encode(test_data, return_tensor=return_tensor)
+    return x_batch, x_batch_test
+
+
+def load_mhg_model(test_data, train_data, return_tensor):
+    model = mhg.load(MHG_MODEL_PICKLE)
+    with torch.no_grad():
+        train_emb = model.encode(train_data)
+        x_batch = torch.stack(train_emb)
+
+        test_emb = model.encode(test_data)
+        x_batch_test = torch.stack(test_emb)
+    if not return_tensor:
+        x_batch = pd.DataFrame(x_batch)
+        x_batch_test = pd.DataFrame(x_batch_test)
     return x_batch, x_batch_test
 
 
@@ -532,7 +188,7 @@ def get_representation(
 def single_modal(
     model: str,
     dataset=None,
-    downstream_model: str = None,
+    downstream_model: str | DownstreamModelType = None,
     params=None,
     x_train=None,
     x_test=None,
@@ -555,8 +211,8 @@ def single_modal(
 
     data = avail_datasets()
     df = pd.DataFrame(data)
-    # print(list(df["Dataset"].values))
 
+    task = "Dummy"
     if dataset in df["Dataset"].to_list():
         task = dataset
         with open(f"representation/{task}_{model_type}.pkl", "rb") as f1:
@@ -564,23 +220,14 @@ def single_modal(
         LOGGER.debug(f" Representation loaded successfully")
 
     elif x_train is None:
-        LOGGER.info("Custom Dataset")
-        # return
-        components = dataset.split(",")
-        train_data = pd.read_csv(components[0])[components[2]]
-        test_data = pd.read_csv(components[1])[components[2]]
-
-        y_batch = pd.read_csv(components[0])[components[3]]
-        y_batch_test = pd.read_csv(components[1])[components[3]]
-
-        x_batch, x_batch_test = get_representation(train_data, test_data, model_type)
+        x_batch, x_batch_test, y_batch, y_batch_test = _load_custom_dataset(dataset, model_type)
 
         LOGGER.debug(f" Representation loaded successfully")
 
     else:
         y_batch = y_train
         y_batch_test = y_test
-        x_batch, x_batch_test = get_representation(x_train, x_test, model_type)
+        x_batch, x_batch_test = get_vector_embeddings(x_train, x_test, model_type)
 
     # exclude row containing Nan value
     if isinstance(x_batch, torch.Tensor):
@@ -607,123 +254,60 @@ def single_modal(
 
     LOGGER.info(f" Calculating ROC AUC Score ...")
 
-    if downstream_model == "XGBClassifier":
-        if params == None:
-            xgb_predict_concat = XGBClassifier()
-        else:
-            xgb_predict_concat = XGBClassifier(
-                **params
-            )  # n_estimators=5000, learning_rate=0.01, max_depth=10
-        xgb_predict_concat.fit(x_batch, y_batch)
+    if downstream_model == DownstreamModelType.XGBClassifier:
+        return build_xgb_classifier_model(
+            model_type, params, task, x_batch, x_batch_test, y_batch, y_batch_test
+        )
 
-        y_prob = xgb_predict_concat.predict_proba(x_batch_test)[:, 1]
+    elif downstream_model == DownstreamModelType.DefaultClassifier:
+        return build_default_classifier_model(
+            model_type, task, x_batch, x_batch_test, y_batch, y_batch_test
+        )
 
-        roc_auc = roc_auc_score(y_batch_test, y_prob)
-        fpr, tpr, _ = roc_curve(y_batch_test, y_prob)
-        LOGGER.info(f"ROC-AUC Score: {roc_auc:.4f}")
+    elif downstream_model == DownstreamModelType.SVR:
+        return build_svr_model(params, x_batch, x_batch_test, y_batch, y_batch_test)
 
-        try:
-            with open(f"plot_emb/{task}_{model_type}.pkl", "rb") as f1:
-                class_0, class_1 = pickle.load(f1)
-        except:
-            LOGGER.debug("Generating latent plots")
-            reducer = umap.UMAP(
-                metric="euclidean",
-                n_neighbors=10,
-                n_components=2,
-                low_memory=True,
-                min_dist=0.1,
-                verbose=False,
-            )
-            n_samples = np.minimum(1000, len(x_batch))
+    elif downstream_model == DownstreamModelType.KernelRidge:
+        return build_kernel_ridge_model(params, x_batch, x_batch_test, y_batch, y_batch_test)
 
-            try:
-                x = y_batch.values[:n_samples]
-            except:
-                x = y_batch[:n_samples]
-            index_0 = [index for index in range(len(x)) if x[index] == 0]
-            index_1 = [index for index in range(len(x)) if x[index] == 1]
+    elif downstream_model == DownstreamModelType.LinearRegression:
+        return build_linear_regression_model(params, x_batch, x_batch_test, y_batch, y_batch_test)
 
-            try:
-                features_umap = reducer.fit_transform(x_batch[:n_samples])
-                class_0 = features_umap[index_0]
-                class_1 = features_umap[index_1]
-            except:
-                class_0 = []
-                class_1 = []
-            LOGGER.debug("Generating latent plots : Done")
+    elif downstream_model == DownstreamModelType.DefaultRegressor:
+        return build_default_regressor_model(x_batch, x_batch_test, y_batch, y_batch_test)
 
-        # vizualize(roc_auc,fpr, tpr, x_batch, y_batch )
 
-        result = f"ROC-AUC Score: {roc_auc:.4f}"
+def _load_custom_dataset(dataset, model_type):
+    LOGGER.info("Custom Dataset")
+    # return
+    components = dataset.split(",")
+    train_data = pd.read_csv(components[0])[components[2]]
+    test_data = pd.read_csv(components[1])[components[2]]
+    y_batch = pd.read_csv(components[0])[components[3]]
+    y_batch_test = pd.read_csv(components[1])[components[3]]
+    x_batch, x_batch_test = get_vector_embeddings(train_data, test_data, model_type)
+    return x_batch, x_batch_test, y_batch, y_batch_test
 
-        return result, roc_auc, fpr, tpr, class_0, class_1
 
-    elif downstream_model == "DefaultClassifier":
-        xgb_predict_concat = XGBClassifier()  # n_estimators=5000, learning_rate=0.01, max_depth=10
-        xgb_predict_concat.fit(x_batch, y_batch)
-
-        y_prob = xgb_predict_concat.predict_proba(x_batch_test)[:, 1]
-
-        roc_auc = roc_auc_score(y_batch_test, y_prob)
-        fpr, tpr, _ = roc_curve(y_batch_test, y_prob)
-        LOGGER.info(f"ROC-AUC Score: {roc_auc:.4f}")
-
-        try:
-            with open(f"plot_emb/{task}_{model_type}.pkl", "rb") as f1:
-                class_0, class_1 = pickle.load(f1)
-        except:
-            LOGGER.info("Generating latent plots")
-            reducer = umap.UMAP(
-                metric="euclidean",
-                n_neighbors=10,
-                n_components=2,
-                low_memory=True,
-                min_dist=0.1,
-                verbose=False,
-            )
-            n_samples = np.minimum(1000, len(x_batch))
-
-            try:
-                x = y_batch.values[:n_samples]
-            except:
-                x = y_batch[:n_samples]
-
-            try:
-                features_umap = reducer.fit_transform(x_batch[:n_samples])
-                index_0 = [index for index in range(len(x)) if x[index] == 0]
-                index_1 = [index for index in range(len(x)) if x[index] == 1]
-
-                class_0 = features_umap[index_0]
-                class_1 = features_umap[index_1]
-            except:
-                class_0 = []
-                class_1 = []
-
-            LOGGER.debug("Generating latent plots : Done")
-
-        # vizualize(roc_auc,fpr, tpr, x_batch, y_batch )
-
-        result = f"ROC-AUC Score: {roc_auc:.4f}"
-
-        return result, roc_auc, fpr, tpr, class_0, class_1
-
-    elif downstream_model == "SVR":
-        if params == None:
-            regressor = SVR()
-        else:
-            regressor = SVR(**params)
-        model = TransformedTargetRegressor(
-            regressor=regressor, transformer=MinMaxScaler(feature_range=(-1, 1))
-        ).fit(x_batch, y_batch)
-
-        y_prob = model.predict(x_batch_test)
-        RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
-
-        LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
-        result = f"RMSE Score: {RMSE_score:.4f}"
-
-        LOGGER.info("Generating latent plots")
+def build_xgb_classifier_model(
+    model_type, params, task, x_batch, x_batch_test, y_batch, y_batch_test
+):
+    if params is None:
+        xgb_predict_concat = XGBClassifier()
+    else:
+        xgb_predict_concat = XGBClassifier(
+            **params
+        )  # n_estimators=5000, learning_rate=0.01, max_depth=10
+    xgb_predict_concat.fit(x_batch, y_batch)
+    y_prob = xgb_predict_concat.predict_proba(x_batch_test)[:, 1]
+    roc_auc = roc_auc_score(y_batch_test, y_prob)
+    fpr, tpr, _ = roc_curve(y_batch_test, y_prob)
+    LOGGER.info(f"ROC-AUC Score: {roc_auc:.4f}")
+    try:
+        with open(f"plot_emb/{task}_{model_type}.pkl", "rb") as f1:
+            class_0, class_1 = pickle.load(f1)
+    except:
+        LOGGER.debug("Generating latent plots")
         reducer = umap.UMAP(
             metric="euclidean",
             n_neighbors=10,
@@ -738,35 +322,33 @@ def single_modal(
             x = y_batch.values[:n_samples]
         except:
             x = y_batch[:n_samples]
-        # index_0 = [index for index in range(len(x)) if x[index] == 0]
-        # index_1 = [index for index in range(len(x)) if x[index] == 1]
+        index_0 = [index for index in range(len(x)) if x[index] == 0]
+        index_1 = [index for index in range(len(x)) if x[index] == 1]
 
         try:
             features_umap = reducer.fit_transform(x_batch[:n_samples])
-            class_0 = features_umap  # [index_0]
-            class_1 = features_umap  # [index_1]
+            class_0 = features_umap[index_0]
+            class_1 = features_umap[index_1]
         except:
             class_0 = []
             class_1 = []
         LOGGER.debug("Generating latent plots : Done")
+    # vizualize(roc_auc,fpr, tpr, x_batch, y_batch )
+    result = f"ROC-AUC Score: {roc_auc:.4f}"
+    return result, roc_auc, fpr, tpr, class_0, class_1
 
-        return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
 
-    elif downstream_model == "Kernel Ridge":
-        if params == None:
-            regressor = KernelRidge()
-        else:
-            regressor = KernelRidge(**params)
-        model = TransformedTargetRegressor(
-            regressor=regressor, transformer=MinMaxScaler(feature_range=(-1, 1))
-        ).fit(x_batch, y_batch)
-
-        y_prob = model.predict(x_batch_test)
-        RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
-
-        LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
-        result = f"RMSE Score: {RMSE_score:.4f}"
-
+def build_default_classifier_model(model_type, task, x_batch, x_batch_test, y_batch, y_batch_test):
+    xgb_predict_concat = XGBClassifier()  # n_estimators=5000, learning_rate=0.01, max_depth=10
+    xgb_predict_concat.fit(x_batch, y_batch)
+    y_prob = xgb_predict_concat.predict_proba(x_batch_test)[:, 1]
+    roc_auc = roc_auc_score(y_batch_test, y_prob)
+    fpr, tpr, _ = roc_curve(y_batch_test, y_prob)
+    LOGGER.info(f"ROC-AUC Score: {roc_auc:.4f}")
+    try:
+        with open(f"plot_emb/{task}_{model_type}.pkl", "rb") as f1:
+            class_0, class_1 = pickle.load(f1)
+    except:
         LOGGER.info("Generating latent plots")
         reducer = umap.UMAP(
             metric="euclidean",
@@ -777,101 +359,175 @@ def single_modal(
             verbose=False,
         )
         n_samples = np.minimum(1000, len(x_batch))
-        features_umap = reducer.fit_transform(x_batch[:n_samples])
+
         try:
             x = y_batch.values[:n_samples]
         except:
             x = y_batch[:n_samples]
-        # index_0 = [index for index in range(len(x)) if x[index] == 0]
-        # index_1 = [index for index in range(len(x)) if x[index] == 1]
 
-        class_0 = features_umap  # [index_0]
-        class_1 = features_umap  # [index_1]
-        LOGGER.debug("Generating latent plots : Done")
-
-        return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
-
-    elif downstream_model == "Linear Regression":
-        if params == None:
-            regressor = LinearRegression()
-        else:
-            regressor = LinearRegression(**params)
-        model = TransformedTargetRegressor(
-            regressor=regressor, transformer=MinMaxScaler(feature_range=(-1, 1))
-        ).fit(x_batch, y_batch)
-
-        y_prob = model.predict(x_batch_test)
-        RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
-
-        LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
-        result = f"RMSE Score: {RMSE_score:.4f}"
-
-        LOGGER.info("Generating latent plots")
-        reducer = umap.UMAP(
-            metric="euclidean",
-            n_neighbors=10,
-            n_components=2,
-            low_memory=True,
-            min_dist=0.1,
-            verbose=False,
-        )
-        n_samples = np.minimum(1000, len(x_batch))
-        features_umap = reducer.fit_transform(x_batch[:n_samples])
         try:
-            x = y_batch.values[:n_samples]
+            features_umap = reducer.fit_transform(x_batch[:n_samples])
+            index_0 = [index for index in range(len(x)) if x[index] == 0]
+            index_1 = [index for index in range(len(x)) if x[index] == 1]
+
+            class_0 = features_umap[index_0]
+            class_1 = features_umap[index_1]
         except:
-            x = y_batch[:n_samples]
-        # index_0 = [index for index in range(len(x)) if x[index] == 0]
-        # index_1 = [index for index in range(len(x)) if x[index] == 1]
+            class_0 = []
+            class_1 = []
 
-        class_0 = features_umap  # [index_0]
-        class_1 = features_umap  # [index_1]
         LOGGER.debug("Generating latent plots : Done")
+    # vizualize(roc_auc,fpr, tpr, x_batch, y_batch )
+    result = f"ROC-AUC Score: {roc_auc:.4f}"
+    return result, roc_auc, fpr, tpr, class_0, class_1
 
-        return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
 
-    elif downstream_model == "DefaultRegressor":
-        regressor = SVR(kernel="rbf", degree=3, C=5, gamma="scale", epsilon=0.01)
-        model = TransformedTargetRegressor(
-            regressor=regressor, transformer=MinMaxScaler(feature_range=(-1, 1))
-        ).fit(x_batch, y_batch)
+def build_kernel_ridge_model(params, x_batch, x_batch_test, y_batch, y_batch_test):
+    if params == None:
+        regressor = KernelRidge()
+    else:
+        regressor = KernelRidge(**params)
+    model = TransformedTargetRegressor(
+        regressor=regressor, transformer=MinMaxScaler(feature_range=(-1, 1))
+    ).fit(x_batch, y_batch)
+    y_prob = model.predict(x_batch_test)
+    RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
+    LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
+    result = f"RMSE Score: {RMSE_score:.4f}"
+    LOGGER.info("Generating latent plots")
+    reducer = umap.UMAP(
+        metric="euclidean",
+        n_neighbors=10,
+        n_components=2,
+        low_memory=True,
+        min_dist=0.1,
+        verbose=False,
+    )
+    n_samples = np.minimum(1000, len(x_batch))
+    features_umap = reducer.fit_transform(x_batch[:n_samples])
+    try:
+        x = y_batch.values[:n_samples]
+    except:
+        x = y_batch[:n_samples]
+    # index_0 = [index for index in range(len(x)) if x[index] == 0]
+    # index_1 = [index for index in range(len(x)) if x[index] == 1]
+    class_0 = features_umap  # [index_0]
+    class_1 = features_umap  # [index_1]
+    LOGGER.debug("Generating latent plots : Done")
+    return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
 
-        y_prob = model.predict(x_batch_test)
-        RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
 
-        LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
-        result = f"RMSE Score: {RMSE_score:.4f}"
-
-        LOGGER.info("Generating latent plots")
-        reducer = umap.UMAP(
-            metric="euclidean",
-            n_neighbors=10,
-            n_components=2,
-            low_memory=True,
-            min_dist=0.1,
-            verbose=False,
-        )
-        n_samples = np.minimum(1000, len(x_batch))
+def build_svr_model(params, x_batch, x_batch_test, y_batch, y_batch_test):
+    if params == None:
+        regressor = SVR()
+    else:
+        regressor = SVR(**params)
+    model = TransformedTargetRegressor(
+        regressor=regressor, transformer=MinMaxScaler(feature_range=(-1, 1))
+    ).fit(x_batch, y_batch)
+    y_prob = model.predict(x_batch_test)
+    RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
+    LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
+    result = f"RMSE Score: {RMSE_score:.4f}"
+    LOGGER.info("Generating latent plots")
+    reducer = umap.UMAP(
+        metric="euclidean",
+        n_neighbors=10,
+        n_components=2,
+        low_memory=True,
+        min_dist=0.1,
+        verbose=False,
+    )
+    n_samples = np.minimum(1000, len(x_batch))
+    try:
+        x = y_batch.values[:n_samples]
+    except:
+        x = y_batch[:n_samples]
+    # index_0 = [index for index in range(len(x)) if x[index] == 0]
+    # index_1 = [index for index in range(len(x)) if x[index] == 1]
+    try:
         features_umap = reducer.fit_transform(x_batch[:n_samples])
-        try:
-            x = y_batch.values[:n_samples]
-        except:
-            x = y_batch[:n_samples]
-        # index_0 = [index for index in range(len(x)) if x[index] == 0]
-        # index_1 = [index for index in range(len(x)) if x[index] == 1]
-
         class_0 = features_umap  # [index_0]
         class_1 = features_umap  # [index_1]
-        LOGGER.debug("Generating latent plots : Done")
+    except:
+        class_0 = []
+        class_1 = []
+    LOGGER.debug("Generating latent plots : Done")
+    return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
 
-        return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
+
+def build_linear_regression_model(params, x_batch, x_batch_test, y_batch, y_batch_test):
+    if params == None:
+        regressor = LinearRegression()
+    else:
+        regressor = LinearRegression(**params)
+    model = TransformedTargetRegressor(
+        regressor=regressor, transformer=MinMaxScaler(feature_range=(-1, 1))
+    ).fit(x_batch, y_batch)
+    y_prob = model.predict(x_batch_test)
+    RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
+    LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
+    result = f"RMSE Score: {RMSE_score:.4f}"
+    LOGGER.info("Generating latent plots")
+    reducer = umap.UMAP(
+        metric="euclidean",
+        n_neighbors=10,
+        n_components=2,
+        low_memory=True,
+        min_dist=0.1,
+        verbose=False,
+    )
+    n_samples = np.minimum(1000, len(x_batch))
+    features_umap = reducer.fit_transform(x_batch[:n_samples])
+    try:
+        x = y_batch.values[:n_samples]
+    except:
+        x = y_batch[:n_samples]
+    # index_0 = [index for index in range(len(x)) if x[index] == 0]
+    # index_1 = [index for index in range(len(x)) if x[index] == 1]
+    class_0 = features_umap  # [index_0]
+    class_1 = features_umap  # [index_1]
+    LOGGER.debug("Generating latent plots : Done")
+    return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
+
+
+def build_default_regressor_model(x_batch, x_batch_test, y_batch, y_batch_test):
+    regressor = SVR(kernel="rbf", degree=3, C=5, gamma="scale", epsilon=0.01)
+    model = TransformedTargetRegressor(
+        regressor=regressor, transformer=MinMaxScaler(feature_range=(-1, 1))
+    ).fit(x_batch, y_batch)
+    y_prob = model.predict(x_batch_test)
+    RMSE_score = np.sqrt(mean_squared_error(y_batch_test, y_prob))
+    LOGGER.info(f"RMSE Score: {RMSE_score:.4f}")
+    result = f"RMSE Score: {RMSE_score:.4f}"
+    LOGGER.info("Generating latent plots")
+    reducer = umap.UMAP(
+        metric="euclidean",
+        n_neighbors=10,
+        n_components=2,
+        low_memory=True,
+        min_dist=0.1,
+        verbose=False,
+    )
+    n_samples = np.minimum(1000, len(x_batch))
+    features_umap = reducer.fit_transform(x_batch[:n_samples])
+    try:
+        x = y_batch.values[:n_samples]
+    except:
+        x = y_batch[:n_samples]
+    # index_0 = [index for index in range(len(x)) if x[index] == 0]
+    # index_1 = [index for index in range(len(x)) if x[index] == 1]
+    class_0 = features_umap  # [index_0]
+    class_1 = features_umap  # [index_1]
+    LOGGER.debug("Generating latent plots : Done")
+    return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
 
 
 # noinspection t
 def multi_modal(
     model_list,
     dataset=None,
-    downstream_model=None,
+    downstream_model: DownstreamModelType | str = None,
     params=None,
     x_train=None,
     x_test=None,
@@ -881,7 +537,6 @@ def multi_modal(
     # print(model_list)
     data = avail_datasets()
     df = pd.DataFrame(data)
-    list(df["Dataset"].values)
 
     if dataset in list(df["Dataset"].values):
         task = dataset
@@ -902,10 +557,6 @@ def multi_modal(
         y_batch_test = y_test
         train_data = x_train
         test_data = x_test
-
-    data = avail_models(raw=True)
-    df = pd.DataFrame(data)
-    list(df["Name"].values)
 
     alias = {
         "MHG-GED": "mhg",
@@ -930,7 +581,7 @@ def multi_modal(
                         x_batch, y_batch, x_batch_test, y_batch_test = pickle.load(f1)
                     LOGGER.debug(f" Loaded representation/{task}_{model_type}.pkl")
                 else:
-                    x_batch, x_batch_test = get_representation(train_data, test_data, model_type)
+                    x_batch, x_batch_test = get_vector_embeddings(train_data, test_data, model_type)
                     x_batch = pd.DataFrame(x_batch)
                     x_batch_test = pd.DataFrame(x_batch_test)
 
@@ -940,7 +591,7 @@ def multi_modal(
                         x_batch_1, y_batch_1, x_batch_test_1, y_batch_test_1 = pickle.load(f1)
                         LOGGER.debug(f" Loaded representation/{task}_{model_type}.pkl")
                 else:
-                    x_batch_1, x_batch_test_1 = get_representation(
+                    x_batch_1, x_batch_test_1 = get_vector_embeddings(
                         train_data, test_data, model_type
                     )
                     x_batch_1 = pd.DataFrame(x_batch_1)
@@ -999,7 +650,7 @@ def multi_modal(
         n_samples = np.minimum(1000, len(x_batch))
         features_umap = reducer.fit_transform(x_batch[:n_samples])
 
-        if "Classifier" in downstream_model:
+        if "Classifier" in str(downstream_model):
             try:
                 x = y_batch.values[:n_samples]
             except:
@@ -1018,7 +669,7 @@ def multi_modal(
 
     LOGGER.info(f" Calculating ROC AUC Score ...")
 
-    if downstream_model == "XGBClassifier":
+    if downstream_model == DownstreamModelType.XGBClassifier:
         if params is None:
             xgb_predict_concat = XGBClassifier()
         else:
@@ -1040,7 +691,7 @@ def multi_modal(
 
         return result, roc_auc, fpr, tpr, class_0, class_1
 
-    elif downstream_model == "DefaultClassifier":
+    elif downstream_model == DownstreamModelType.DefaultClassifier:
         xgb_predict_concat = XGBClassifier()  # n_estimators=5000, learning_rate=0.01, max_depth=10)
         xgb_predict_concat.fit(x_batch, y_batch)
 
@@ -1058,7 +709,7 @@ def multi_modal(
 
         return result, roc_auc, fpr, tpr, class_0, class_1
 
-    elif downstream_model == "SVR":
+    elif downstream_model == DownstreamModelType.SVR:
         if params == None:
             regressor = SVR()
         else:
@@ -1075,7 +726,7 @@ def multi_modal(
 
         return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
 
-    elif downstream_model == "Linear Regression":
+    elif downstream_model == DownstreamModelType.LinearRegression:
         if params == None:
             regressor = LinearRegression()
         else:
@@ -1092,8 +743,8 @@ def multi_modal(
 
         return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
 
-    elif downstream_model == "Kernel Ridge":
-        if params == None:
+    elif downstream_model == DownstreamModelType.KernelRidge:
+        if params is None:
             regressor = KernelRidge()
         else:
             regressor = KernelRidge(**params)
@@ -1109,7 +760,7 @@ def multi_modal(
 
         return result, RMSE_score, y_batch_test, y_prob, class_0, class_1
 
-    elif downstream_model == "DefaultRegressor":
+    elif downstream_model == DownstreamModelType.DefaultRegressor:
         regressor = SVR(kernel="rbf", degree=3, C=5, gamma="scale", epsilon=0.01)
         model = TransformedTargetRegressor(
             regressor=regressor, transformer=MinMaxScaler(feature_range=(-1, 1))
@@ -1162,102 +813,3 @@ def finetune_optuna(x_batch, y_batch, x_batch_test, y_test):
         LOGGER.info("ROC_AUC : ", roc_auc)
 
         return roc_auc
-
-
-def add_new_model():
-    models = avail_models(raw=True)
-
-    # Function to display models
-    def display_models():
-        for model in models:
-            model_display = f"Name: {model['Name']}, Description: {model['Description']}, Timestamp: {model['Timestamp']}"
-            LOGGER.debug(model_display)
-
-    # Function to update models
-    def update_models(new_name, new_description, new_path):
-        new_model = {
-            "Name": new_name,
-            "Description": new_description,
-            "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            # "path": new_path
-        }
-        models.append(new_model)
-        with open("models.json", "w") as outfile:
-            json.dump(models, outfile)
-
-        print("Model uploaded and updated successfully!")
-        list_models()  # display_models()
-
-    # Widgets
-    name_text = widgets.Text(description="Name:", layout=Layout(width="50%"))
-    description_text = widgets.Text(description="Description:", layout=Layout(width="50%"))
-    path_text = widgets.Text(description="Path:", layout=Layout(width="50%"))
-
-    def browse_callback(b):
-        root = tk.Tk()
-        root.withdraw()  # Hide the main window
-        file_path = filedialog.askopenfilename(title="Select a Model File")
-        if file_path:
-            path_text.value = file_path
-
-    browse_button = widgets.Button(description="Browse")
-    browse_button.on_click(browse_callback)
-
-    def submit_callback(b):
-        update_models(name_text.value, description_text.value, path_text.value)
-
-    submit_button = widgets.Button(description="Submit")
-    submit_button.on_click(submit_callback)
-
-    # Display widgets
-    display(VBox([name_text, description_text, path_text, browse_button, submit_button]))
-
-
-def add_new_dataset():
-    # Sample data
-    datasets = avail_datasets()
-
-    # Function to display models
-    def display_datasets():
-        for dataset in datasets:
-            dataset_display = f"Name: {dataset['Dataset']}, Input: {dataset['Input']},Output: {dataset['Output']},Path: {dataset['Path']}, Timestamp: {dataset['Timestamp']}"
-
-    # Function to update models
-    def update_datasets(new_dataset, new_input, new_output, new_path):
-        new_model = {
-            "Dataset": new_dataset,
-            "Input": new_input,
-            "Output": new_output,
-            "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Path": os.path.basename(new_path),
-        }
-        datasets.append(new_model)
-        with open("datasets.json", "w") as outfile:
-            json.dump(datasets, outfile)
-
-        print("Dataset uploaded and updated successfully!")
-        list_data()
-
-    # Widgets
-    dataset_text = widgets.Text(description="Dataset:", layout=Layout(width="50%"))
-    input_text = widgets.Text(description="Input:", layout=Layout(width="50%"))
-    output_text = widgets.Text(description="Output:", layout=Layout(width="50%"))
-    path_text = widgets.Text(description="Path:", layout=Layout(width="50%"))
-
-    def browse_callback(b):
-        root = tk.Tk()
-        root.withdraw()  # Hide the main window
-        file_path = filedialog.askopenfilename(title="Select a Dataset File")
-        if file_path:
-            path_text.value = file_path
-
-    browse_button = widgets.Button(description="Browse")
-    browse_button.on_click(browse_callback)
-
-    def submit_callback(b):
-        update_datasets(dataset_text.value, input_text.value, output_text.value, path_text.value)
-
-    submit_button = widgets.Button(description="Submit")
-    submit_button.on_click(submit_callback)
-
-    display(VBox([dataset_text, input_text, output_text, path_text, browse_button, submit_button]))

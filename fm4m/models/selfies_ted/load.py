@@ -1,16 +1,15 @@
-import os
-import sys
 import torch
 import selfies as sf  # selfies>=2.1.1
-import pickle
 import pandas as pd
 import numpy as np
 from datasets import Dataset
 from rdkit import Chem
 from transformers import AutoTokenizer, AutoModel
 
+from fm4m.config.model_files import BART_PICKLE
 
-class SELFIES(torch.nn.Module):
+
+class Selfies(torch.nn.Module):
 
     def __init__(self):
         super().__init__()
@@ -32,15 +31,20 @@ class SELFIES(torch.nn.Module):
                     selfies = "[]"
                     self.invalid.append(i)
 
-            spaced_selfies_batch.append(selfies.replace('][', '] ['))
+            spaced_selfies_batch.append(selfies.replace("][", "] ["))
 
         return spaced_selfies_batch
 
-
     def get_embedding(self, selfies):
-        encoding = self.tokenizer(selfies["selfies"], return_tensors='pt', max_length=128, truncation=True, padding='max_length')
-        input_ids = encoding['input_ids']
-        attention_mask = encoding['attention_mask']
+        encoding = self.tokenizer(
+            selfies["selfies"],
+            return_tensors="pt",
+            max_length=128,
+            truncation=True,
+            padding="max_length",
+        )
+        input_ids = encoding["input_ids"]
+        attention_mask = encoding["attention_mask"]
         outputs = self.model.encoder(input_ids=input_ids, attention_mask=attention_mask)
         model_output = outputs.last_hidden_state
 
@@ -49,43 +53,42 @@ class SELFIES(torch.nn.Module):
         sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
         model_output = sum_embeddings / sum_mask
 
-        del encoding['input_ids']
-        del encoding['attention_mask']
+        del encoding["input_ids"]
+        del encoding["attention_mask"]
 
         encoding["embedding"] = model_output
 
         return encoding
 
-
-    def load(self, checkpoint="bart-2908.pickle"):
+    def load(self, checkpoint=BART_PICKLE):
         """
-            inputs :
-                   checkpoint (pickle object)
+        inputs :
+               checkpoint (pickle object)
         """
 
         self.tokenizer = AutoTokenizer.from_pretrained("ibm/materials.selfies-ted")
         self.model = AutoModel.from_pretrained("ibm/materials.selfies-ted")
 
-
-
-
-
     # TODO: remove `use_gpu` argument in validation pipeline
     def encode(self, smiles_list=[], use_gpu=False, return_tensor=False):
         """
-            inputs :
-                   checkpoint (pickle object)
-            :return: embedding
+        inputs :
+               checkpoint (pickle object)
+        :return: embedding
         """
         selfies = self.get_selfies(smiles_list)
-        selfies_df = pd.DataFrame(selfies,columns=["selfies"])
+        selfies_df = pd.DataFrame(selfies, columns=["selfies"])
         data = Dataset.from_pandas(selfies_df)
         embedding = data.map(self.get_embedding, batched=True, num_proc=1, batch_size=128)
         emb = np.asarray(embedding["embedding"].copy())
 
         for idx in self.invalid:
             emb[idx] = np.nan
-            print("Cannot encode {0} to selfies and embedding replaced by NaN".format(smiles_list[idx]))
+            print(
+                "Cannot encode {0} to selfies and embedding replaced by NaN".format(
+                    smiles_list[idx]
+                )
+            )
 
         if return_tensor:
             return torch.tensor(emb)

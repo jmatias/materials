@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 import fm4m
+import fm4m.datasets
 from fm4m.constants import DATA_DIR
 from fm4m.logger import create_logger
 
@@ -12,12 +13,12 @@ from fm4m.logger import create_logger
 
 LOGGER = create_logger(__name__)
 
-#%%
+# %%
 
 # 1 Load Data
 
-train_df = pd.read_csv(os.path.join(DATA_DIR,"bace/train.csv"))
-test_df = pd.read_csv(os.path.join(DATA_DIR,"bace/test.csv"))
+train_df = pd.read_csv(os.path.join(DATA_DIR, "bace/train.csv"))
+test_df = pd.read_csv(os.path.join(DATA_DIR, "bace/test.csv"))
 
 LOGGER.info(f"shape of train_df: {train_df.shape}")
 train_df.head(3)
@@ -32,13 +33,13 @@ xtest = test_df[input].to_list()
 ytest = test_df[output].to_list()
 
 
-fm4m.avail_models()
+fm4m.datasets.avail_models()
 
-#%%
+# %%
 
 # 2-2. Encoding
 
-x_batch, x_batch_test = fm4m.get_representation(
+x_batch, x_batch_test = fm4m.get_vector_embeddings(
     xtrain, xtest, model_type="MHG-GED", return_tensor=False
 )
 
@@ -46,9 +47,9 @@ LOGGER.info(f"x_batch shape: {x_batch.shape}, x_batch_test shape: {x_batch_test.
 
 # 3. Model usage
 
-fm4m.avail_downstream_models()
+fm4m.datasets.avail_downstream_models()
 
-#%%
+# %%
 
 # 3-2. Example of single-modal model usage
 
@@ -81,7 +82,7 @@ result = fm4m.multi_modal(
 
 LOGGER.info(f"result[0]: Result, '{result[0]}', {type(result[0])}")
 
-#%%
+# %%
 # 4. Visualization
 
 # 4-1. ROC-AUC: Classification task
@@ -115,11 +116,11 @@ ax.legend(loc="lower right")
 
 ax.set_title("Dataset Distribution")
 
-#%%
+# %%
 # 4-3. Parity Plot: Regression task
 
-train_df = pd.read_csv(os.path.join(DATA_DIR,"esol/train.csv"))
-test_df = pd.read_csv(os.path.join(DATA_DIR,"esol/test.csv"))
+train_df = pd.read_csv(os.path.join(DATA_DIR, "esol/train.csv"))
+test_df = pd.read_csv(os.path.join(DATA_DIR, "esol/test.csv"))
 
 train_df.head(2)
 
@@ -148,7 +149,9 @@ LOGGER.info(f"result[0]: Result, '{result[0]}', {type(result[0])}")
 LOGGER.info(f"result[1]: Row score, {result[1]}, {type(result[1])}")
 LOGGER.info(f"result[2]: Actual property values, type {type(result[2])}")
 LOGGER.info(f"result[3]: Predicted property values, type {type(result[3])}")
-LOGGER.info(f"result[4] & result[5]: latent space, shape {np.concatenate([result[4], result[5]]).shape}")
+LOGGER.info(
+    f"result[4] & result[5]: latent space, shape {np.concatenate([result[4], result[5]]).shape}"
+)
 
 fig, ax = plt.subplots()
 ax.set_title("Parity plot")
